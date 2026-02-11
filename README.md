@@ -35,6 +35,30 @@ Edge Device (ASP/QUIC)
 | `src/device_keys.rs` | Per-device encryption key derivation (BLAKE3 KDF) with caching |
 | `src/telemetry.rs` | Streaming metrics via DDSketch, HyperLogLog, CountMinSketch |
 
+## Internal Bridge Modules
+
+| Module | Description |
+|--------|-------------|
+| `ingest` | ASP packet receive → decrypt → route |
+| `device_keys` | Per-device BLAKE3 KDF key derivation |
+| `telemetry` | DDSketch/HLL/CMS cloud telemetry |
+| `queue_bridge` | Priority message routing to ALICE-Queue |
+| `container_bridge` | Container orchestration (deploy/scale/health) |
+
+### Queue Bridge (`queue_bridge`)
+
+Gateway-side message routing with priority classification.
+
+- `GatewayRouter` — Priority-based message routing
+- `GatewayMessage` — Typed gateway messages (SdfKeyframe, SdfDelta, DeviceHealth, AuthChallenge, Telemetry)
+
+### Container Bridge (`container_bridge`)
+
+Container lifecycle orchestration for gateway worker processes.
+
+- `ContainerOrchestrator` — Deploy, scale, and health-check containers
+- `deploy()` / `scale()` / `health_check()` — Container management API
+
 ## Dependencies
 
 | Crate | Role |
