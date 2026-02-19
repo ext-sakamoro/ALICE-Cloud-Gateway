@@ -6,6 +6,7 @@ authors = ["Moroya Sakamoto"]
 description = "Cloud gateway for ALICE edge-to-cloud SDF streaming pipeline"
 license = "AGPL-3.0"
 keywords = ["gateway", "sdf", "streaming", "edge-computing"]
+publish = false
 
 [dependencies]
 # ALICE Ecosystem
