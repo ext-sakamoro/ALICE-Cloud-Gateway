@@ -57,7 +57,7 @@ jobs:
 
       - name: Build
         working-directory: ALICE-Cloud-Gateway
-        run: cargo build --lib
+        run: cargo build
 
       - name: Test
         working-directory: ALICE-Cloud-Gateway
