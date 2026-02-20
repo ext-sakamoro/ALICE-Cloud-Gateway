@@ -40,7 +40,7 @@ pub struct GatewayConfig {
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
-            listen_addr: "0.0.0.0:4433".parse().unwrap(),
+            listen_addr: "0.0.0.0:4433".parse().expect("default listen address is a valid SocketAddr"),
             max_packet_size: 65535,
             db_path: "./alice-gateway-data".to_string(),
             cache_capacity: 100_000,
