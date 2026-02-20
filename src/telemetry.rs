@@ -6,9 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use alice_analytics::{
-    DDSketch2048, HyperLogLog16, CountMinSketch2048x7, FnvHasher,
-};
+use alice_analytics::{CountMinSketch2048x7, DDSketch2048, FnvHasher, HyperLogLog16};
 
 /// Gateway telemetry collector
 ///
@@ -66,10 +64,12 @@ impl GatewayTelemetry {
         self.latency_sketch.insert(latency_ms);
 
         // Unique device estimation
-        self.unique_devices.insert_hash(FnvHasher::hash_u64(device_id));
+        self.unique_devices
+            .insert_hash(FnvHasher::hash_u64(device_id));
 
         // Per-device frequency
-        self.device_frequency.insert_hash(FnvHasher::hash_u64(device_id), 1);
+        self.device_frequency
+            .insert_hash(FnvHasher::hash_u64(device_id), 1);
     }
 
     /// Estimated P50 latency (ms)
@@ -94,7 +94,8 @@ impl GatewayTelemetry {
 
     /// Estimated packet count for a specific device
     pub fn device_packet_estimate(&self, device_id: u64) -> u64 {
-        self.device_frequency.estimate_hash(FnvHasher::hash_u64(device_id))
+        self.device_frequency
+            .estimate_hash(FnvHasher::hash_u64(device_id))
     }
 
     /// Average packet size (bytes)

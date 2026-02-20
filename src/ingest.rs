@@ -5,20 +5,20 @@
 //!
 //! Author: Moroya Sakamoto
 
-use std::net::SocketAddr;
 use std::fmt::Write as FmtWrite;
+use std::net::SocketAddr;
 
 use alice_cache::AliceCache;
+use alice_cdn::sdf_cdn_bridge::{SdfCdnRouter, SdfRoutingStats};
 use alice_db::sdf_bridge::{MortonCode, SdfStorage};
 use alice_sync::cloud_bridge::{CloudSyncHub, SpatialRegion};
 use alice_sync::WorldHash;
-use alice_cdn::sdf_cdn_bridge::{SdfCdnRouter, SdfRoutingStats};
 
 use parking_lot::Mutex;
 
 use crate::device_keys::DeviceKeyStore;
+use crate::queue_bridge::{GatewayMessage, GatewayRouter, MessagePriority};
 use crate::telemetry::GatewayTelemetry;
-use crate::queue_bridge::{GatewayRouter, GatewayMessage, MessagePriority};
 
 /// Result of processing a single packet
 #[derive(Debug)]
@@ -118,11 +118,7 @@ impl IngestPipeline {
         world_max: [f32; 3],
     ) -> std::io::Result<Self> {
         let key_store = DeviceKeyStore::new(master_secret);
-        let sdf_storage = SdfStorage::open(
-            format!("{}/sdf", db_path),
-            world_min,
-            world_max,
-        )?;
+        let sdf_storage = SdfStorage::open(format!("{}/sdf", db_path), world_min, world_max)?;
         let frame_cache = AliceCache::new(cache_capacity);
         let sync_hub = Mutex::new(CloudSyncHub::new());
         let telemetry = Mutex::new(GatewayTelemetry::new());
@@ -167,20 +163,14 @@ impl IngestPipeline {
             ));
         }
 
-        let device_id = u64::from_le_bytes(
-            raw_data[..8].try_into().unwrap()
-        );
-        let scene_version = u32::from_le_bytes(
-            raw_data[8..12].try_into().unwrap()
-        );
+        let device_id = u64::from_le_bytes(raw_data[..8].try_into().unwrap());
+        let scene_version = u32::from_le_bytes(raw_data[8..12].try_into().unwrap());
 
         // Step 2: Decrypt packet payload
         let stream_key = self.key_store.derive_device_key(device_id);
         let payload = &raw_data[12..];
-        let decrypted = alice_crypto::open(
-            &stream_key,
-            payload,
-        ).map_err(|e| IngestError::DecryptionFailed(format!("{:?}", e)))?;
+        let decrypted = alice_crypto::open(&stream_key, payload)
+            .map_err(|e| IngestError::DecryptionFailed(format!("{:?}", e)))?;
 
         // Step 3: Determine packet type (first byte of decrypted payload)
         let is_keyframe = !decrypted.is_empty() && decrypted[0] == 0x01;
@@ -198,11 +188,7 @@ impl IngestPipeline {
                 (0.0, 0.0, 0.0)
             };
 
-            let morton = MortonCode::from_world(
-                cx, cy, cz,
-                self.world_min,
-                self.world_max,
-            );
+            let morton = MortonCode::from_world(cx, cy, cz, self.world_min, self.world_max);
 
             // Extract SDF value from payload (first f32 after position data)
             let sdf_value = if decrypted.len() >= 17 {
@@ -211,11 +197,15 @@ impl IngestPipeline {
                 0.0
             };
 
-            self.sdf_storage.store_keyframe(morton, scene_version, sdf_value)
+            self.sdf_storage
+                .store_keyframe(morton, scene_version, sdf_value)
                 .map_err(|e| IngestError::StorageError(e.to_string()))?;
 
             // Route keyframe to CDN edge node (Maglev consistent hash)
-            cdn_node = self.cdn_router.lock().as_ref()
+            cdn_node = self
+                .cdn_router
+                .lock()
+                .as_ref()
                 .and_then(|router: &SdfCdnRouter| router.route_sdf_request(morton.0 as u32));
         }
 
@@ -232,10 +222,7 @@ impl IngestPipeline {
             hub.register_device(device_id, device_name);
             hub.heartbeat(device_id, start.elapsed().as_millis() as u64);
 
-            let update_region = SpatialRegion::new(
-                [-10.0, -10.0, -10.0],
-                [10.0, 10.0, 10.0],
-            );
+            let update_region = SpatialRegion::new([-10.0, -10.0, -10.0], [10.0, 10.0, 10.0]);
             hub.process_device_update(
                 device_id,
                 scene_version,
@@ -249,7 +236,11 @@ impl IngestPipeline {
             let msg = GatewayMessage {
                 source_device_id: device_id,
                 timestamp_ms: start.elapsed().as_millis() as u64,
-                priority: if is_keyframe { MessagePriority::High } else { MessagePriority::Normal },
+                priority: if is_keyframe {
+                    MessagePriority::High
+                } else {
+                    MessagePriority::Normal
+                },
                 payload: Vec::new(),
                 routing_key: scene_version,
             };
@@ -314,7 +305,6 @@ impl IngestPipeline {
     pub fn connected_device_count(&self) -> usize {
         self.sync_hub.lock().connected_devices().len()
     }
-
 }
 
 #[cfg(test)]
@@ -331,7 +321,8 @@ mod tests {
             [42u8; 32],
             [-100.0, -100.0, -100.0],
             [100.0, 100.0, 100.0],
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     fn make_test_packet(device_id: u64, scene_version: u32, is_keyframe: bool) -> Vec<u8> {
@@ -490,10 +481,7 @@ mod tests {
         assert!(result.is_keyframe);
 
         // Verify spatial query returns data
-        let data = pipeline.query_spatial_region(
-            [-1.0, -1.0, -1.0],
-            [1.0, 1.0, 1.0],
-        );
+        let data = pipeline.query_spatial_region([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
         assert!(data.is_ok());
     }
 }

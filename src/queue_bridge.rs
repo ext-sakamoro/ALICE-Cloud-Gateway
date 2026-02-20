@@ -39,7 +39,9 @@ impl GatewayMessage {
     }
 
     pub fn from_bytes(buf: &[u8]) -> Option<Self> {
-        if buf.len() < 24 { return None; }
+        if buf.len() < 24 {
+            return None;
+        }
         let source_device_id = u64::from_le_bytes(buf[0..8].try_into().ok()?);
         let timestamp_ms = u64::from_le_bytes(buf[8..16].try_into().ok()?);
         let priority = match buf[16] {
@@ -51,9 +53,17 @@ impl GatewayMessage {
         };
         let routing_key = u32::from_le_bytes(buf[17..21].try_into().ok()?);
         let payload_len = u16::from_le_bytes(buf[21..23].try_into().ok()?) as usize;
-        if buf.len() < 24 + payload_len { return None; }
+        if buf.len() < 24 + payload_len {
+            return None;
+        }
         let payload = buf[24..24 + payload_len].to_vec();
-        Some(Self { source_device_id, timestamp_ms, priority, payload, routing_key })
+        Some(Self {
+            source_device_id,
+            timestamp_ms,
+            priority,
+            payload,
+            routing_key,
+        })
     }
 }
 
@@ -66,7 +76,11 @@ pub struct GatewayRouter {
 
 impl GatewayRouter {
     pub fn new(queue_count: u32) -> Self {
-        Self { messages_routed: 0, bytes_routed: 0, queue_count: queue_count.max(1) }
+        Self {
+            messages_routed: 0,
+            bytes_routed: 0,
+            queue_count: queue_count.max(1),
+        }
     }
 
     /// Determine target queue index for a message

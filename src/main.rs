@@ -5,19 +5,19 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod ingest;
-mod device_keys;
-mod telemetry;
-mod queue_bridge;
 mod container_bridge;
+mod device_keys;
+mod ingest;
+mod queue_bridge;
+mod telemetry;
 
+use log::{error, info, warn};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use log::{info, warn, error};
 
-use crate::ingest::IngestPipeline;
 use crate::device_keys::DeviceKeyStore;
+use crate::ingest::IngestPipeline;
 use crate::telemetry::GatewayTelemetry;
 
 /// Gateway configuration
@@ -40,7 +40,9 @@ pub struct GatewayConfig {
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
-            listen_addr: "0.0.0.0:4433".parse().expect("default listen address is a valid SocketAddr"),
+            listen_addr: "0.0.0.0:4433"
+                .parse()
+                .expect("default listen address is a valid SocketAddr"),
             max_packet_size: 65535,
             db_path: "./alice-gateway-data".to_string(),
             cache_capacity: 100_000,
@@ -55,15 +57,13 @@ impl Default for GatewayConfig {
 async fn run_gateway(config: GatewayConfig) -> std::io::Result<()> {
     info!("ALICE Cloud Gateway starting on {}", config.listen_addr);
 
-    let pipeline = Arc::new(
-        IngestPipeline::new(
-            &config.db_path,
-            config.cache_capacity,
-            config.master_secret,
-            config.world_min,
-            config.world_max,
-        )?
-    );
+    let pipeline = Arc::new(IngestPipeline::new(
+        &config.db_path,
+        config.cache_capacity,
+        config.master_secret,
+        config.world_min,
+        config.world_max,
+    )?);
 
     let socket = UdpSocket::bind(config.listen_addr).await?;
     info!("Listening on UDP {}", config.listen_addr);

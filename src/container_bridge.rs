@@ -57,7 +57,10 @@ impl ContainerOrchestrator {
             self.next_container_id += 1;
         }
         self.deployments += 1;
-        DeployResult { container_ids: ids, status: HealthStatus::Healthy }
+        DeployResult {
+            container_ids: ids,
+            status: HealthStatus::Healthy,
+        }
     }
 
     /// Scale replicas up or down
@@ -77,7 +80,12 @@ impl ContainerOrchestrator {
     }
 
     /// Health check (returns status based on simple heuristic)
-    pub fn health_check(&mut self, container_id: u64, cpu_usage_pct: f32, mem_usage_pct: f32) -> HealthStatus {
+    pub fn health_check(
+        &mut self,
+        container_id: u64,
+        cpu_usage_pct: f32,
+        mem_usage_pct: f32,
+    ) -> HealthStatus {
         self.health_checks += 1;
         if cpu_usage_pct > 95.0 || mem_usage_pct > 95.0 {
             HealthStatus::Unhealthy
@@ -141,12 +149,18 @@ mod tests {
     fn test_sequential_deploys() {
         let mut orch = ContainerOrchestrator::new();
         let r1 = orch.deploy(&DeployRequest {
-            image_hash: [0; 32], cpu_limit_us: 100_000,
-            memory_limit: 256 * 1024 * 1024, replicas: 2, region: 0,
+            image_hash: [0; 32],
+            cpu_limit_us: 100_000,
+            memory_limit: 256 * 1024 * 1024,
+            replicas: 2,
+            region: 0,
         });
         let r2 = orch.deploy(&DeployRequest {
-            image_hash: [1; 32], cpu_limit_us: 200_000,
-            memory_limit: 512 * 1024 * 1024, replicas: 2, region: 1,
+            image_hash: [1; 32],
+            cpu_limit_us: 200_000,
+            memory_limit: 512 * 1024 * 1024,
+            replicas: 2,
+            region: 1,
         });
         assert_eq!(r1.container_ids, vec![1, 2]);
         assert_eq!(r2.container_ids, vec![3, 4]);
