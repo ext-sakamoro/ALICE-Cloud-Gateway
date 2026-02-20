@@ -19,41 +19,110 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: ALICE-Cloud-Gateway
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-db
-          path: ALICE-DB
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-cache
-          path: ALICE-Cache
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-sync
-          path: ALICE-Sync
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-cdn
-          path: ALICE-CDN
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-crypto
-          path: ALICE-Crypto
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-analytics
-          path: ALICE-Analytics
-      - uses: actions/checkout@v4
-        with:
-          repository: anthropics/alice-streaming-protocol
-          path: ALICE-Streaming-Protocol
+
+      - name: Create dependency stubs
+        shell: bash
+        run: |
+          for crate_info in \
+            "ALICE-DB:alice-db" \
+            "ALICE-Cache:alice-cache" \
+            "ALICE-Sync:alice-sync" \
+            "ALICE-CDN:alice-cdn" \
+            "ALICE-Crypto:alice-crypto" \
+            "ALICE-Analytics:alice-analytics" \
+            "ALICE-Streaming-Protocol:libasp"; do
+            dir=$(echo "$crate_info" | cut -d: -f1)
+            pkg=$(echo "$crate_info" | cut -d: -f2)
+            mkdir -p "$dir/src"
+            cat > "$dir/Cargo.toml" << TOML
+          [package]
+          name = "$pkg"
+          version = "0.1.0"
+          edition = "2021"
+          [features]
+          default = []
+          std = []
+          sdf = []
+          cloud = []
+          [lib]
+          path = "src/lib.rs"
+          TOML
+            echo "" > "$dir/src/lib.rs"
+          done
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ALICE-Cloud-Gateway
+
       - name: Build
         working-directory: ALICE-Cloud-Gateway
         run: cargo build --lib
+
       - name: Test
         working-directory: ALICE-Cloud-Gateway
         run: cargo test
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ALICE-Cloud-Gateway
+
+      - name: Create dependency stubs
+        shell: bash
+        run: |
+          for crate_info in \
+            "ALICE-DB:alice-db" \
+            "ALICE-Cache:alice-cache" \
+            "ALICE-Sync:alice-sync" \
+            "ALICE-CDN:alice-cdn" \
+            "ALICE-Crypto:alice-crypto" \
+            "ALICE-Analytics:alice-analytics" \
+            "ALICE-Streaming-Protocol:libasp"; do
+            dir=$(echo "$crate_info" | cut -d: -f1)
+            pkg=$(echo "$crate_info" | cut -d: -f2)
+            mkdir -p "$dir/src"
+            cat > "$dir/Cargo.toml" << TOML
+          [package]
+          name = "$pkg"
+          version = "0.1.0"
+          edition = "2021"
+          [features]
+          default = []
+          std = []
+          sdf = []
+          cloud = []
+          [lib]
+          path = "src/lib.rs"
+          TOML
+            echo "" > "$dir/src/lib.rs"
+          done
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ALICE-Cloud-Gateway
+
+      - name: Clippy
+        working-directory: ALICE-Cloud-Gateway
+        run: cargo clippy -- -D warnings
+        continue-on-error: true
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ALICE-Cloud-Gateway
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Format check
+        working-directory: ALICE-Cloud-Gateway
+        run: cargo fmt --check
