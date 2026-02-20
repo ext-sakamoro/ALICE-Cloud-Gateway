@@ -69,7 +69,7 @@ impl GatewayTelemetry {
         self.unique_devices.insert_hash(FnvHasher::hash_u64(device_id));
 
         // Per-device frequency
-        self.device_frequency.insert_hash(FnvHasher::hash_u64(device_id));
+        self.device_frequency.insert_hash(FnvHasher::hash_u64(device_id), 1);
     }
 
     /// Estimated P50 latency (ms)
@@ -93,7 +93,7 @@ impl GatewayTelemetry {
     }
 
     /// Estimated packet count for a specific device
-    pub fn device_packet_estimate(&self, device_id: u64) -> u32 {
+    pub fn device_packet_estimate(&self, device_id: u64) -> u64 {
         self.device_frequency.estimate_hash(FnvHasher::hash_u64(device_id))
     }
 

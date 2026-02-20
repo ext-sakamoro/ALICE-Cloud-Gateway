@@ -6,7 +6,6 @@
 //! Author: Moroya Sakamoto
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::fmt::Write as FmtWrite;
 
 use alice_cache::AliceCache;
@@ -14,13 +13,12 @@ use alice_db::sdf_bridge::{MortonCode, SdfStorage};
 use alice_sync::cloud_bridge::{CloudSyncHub, SpatialRegion};
 use alice_sync::WorldHash;
 use alice_cdn::sdf_cdn_bridge::{SdfCdnRouter, SdfRoutingStats};
-use alice_cdn::VivaldiCoord;
-use libasp::scene::SdfSceneDescriptor;
 
 use parking_lot::Mutex;
 
 use crate::device_keys::DeviceKeyStore;
 use crate::telemetry::GatewayTelemetry;
+use crate::queue_bridge::{GatewayRouter, GatewayMessage, MessagePriority};
 
 /// Result of processing a single packet
 #[derive(Debug)]
@@ -35,6 +33,12 @@ pub struct IngestResult {
     pub sync_recipients: usize,
     /// Cache was updated
     pub cached: bool,
+    /// CDN edge node assigned (if CDN router is active, for keyframes)
+    pub cdn_node: Option<u64>,
+    /// Queue index for downstream processing
+    pub queue_index: u32,
+    /// Processing latency in milliseconds
+    pub latency_ms: f64,
 }
 
 /// Ingest pipeline error
@@ -71,8 +75,9 @@ impl std::error::Error for IngestError {}
 /// 3. Store SDF data (ALICE-DB)
 /// 4. Cache hot frames (ALICE-Cache)
 /// 5. Sync to other devices (ALICE-Sync)
-/// 6. Update CDN routing (ALICE-CDN)
-/// 7. Record telemetry (ALICE-Analytics)
+/// 6. Route to CDN edge nodes (ALICE-CDN)
+/// 7. Route to processing queues (ALICE-Queue)
+/// 8. Record telemetry (ALICE-Analytics)
 pub struct IngestPipeline {
     /// Device key management
     key_store: DeviceKeyStore,
@@ -82,16 +87,29 @@ pub struct IngestPipeline {
     frame_cache: AliceCache<u64, Vec<u8>>,
     /// Multi-device sync hub
     sync_hub: Mutex<CloudSyncHub>,
-    /// CDN routing
+    /// CDN routing (initialized via `set_cdn_router`)
     cdn_router: Mutex<Option<SdfCdnRouter>>,
+    /// Message queue router
+    queue_router: Mutex<GatewayRouter>,
     /// Telemetry collection
     telemetry: Mutex<GatewayTelemetry>,
     /// CDN routing stats
     routing_stats: Mutex<SdfRoutingStats>,
+    /// World bounds min (stored from constructor for SDF spatial indexing)
+    world_min: [f32; 3],
+    /// World bounds max
+    world_max: [f32; 3],
 }
 
 impl IngestPipeline {
     /// Create a new ingest pipeline
+    ///
+    /// # Arguments
+    /// * `db_path` - Directory for SDF spatial storage
+    /// * `cache_capacity` - Number of frames to cache
+    /// * `master_secret` - 32-byte master secret for device key derivation
+    /// * `world_min` - World space minimum bounds for Morton code indexing
+    /// * `world_max` - World space maximum bounds for Morton code indexing
     pub fn new(
         db_path: &str,
         cache_capacity: usize,
@@ -108,6 +126,7 @@ impl IngestPipeline {
         let frame_cache = AliceCache::new(cache_capacity);
         let sync_hub = Mutex::new(CloudSyncHub::new());
         let telemetry = Mutex::new(GatewayTelemetry::new());
+        let queue_router = Mutex::new(GatewayRouter::new(4)); // 4 processing queues
 
         Ok(Self {
             key_store,
@@ -115,9 +134,20 @@ impl IngestPipeline {
             frame_cache,
             sync_hub,
             cdn_router: Mutex::new(None),
+            queue_router,
             telemetry,
             routing_stats: Mutex::new(SdfRoutingStats::default()),
+            world_min,
+            world_max,
         })
+    }
+
+    /// Initialize CDN router with edge node topology
+    ///
+    /// Once set, keyframes will be routed to optimal edge nodes
+    /// via Maglev consistent hashing.
+    pub fn set_cdn_router(&self, router: SdfCdnRouter) {
+        *self.cdn_router.lock() = Some(router);
     }
 
     /// Process an incoming ASP packet
@@ -155,8 +185,8 @@ impl IngestPipeline {
         // Step 3: Determine packet type (first byte of decrypted payload)
         let is_keyframe = !decrypted.is_empty() && decrypted[0] == 0x01;
 
-        // Step 4: Store SDF data in ALICE-DB
-        // For keyframes, store the SDF coefficients spatially
+        // Step 4: Store SDF data in ALICE-DB and route to CDN
+        let mut cdn_node = None;
         if is_keyframe && decrypted.len() > 1 {
             // Extract center coordinates from payload (bytes 1-12)
             let (cx, cy, cz) = if decrypted.len() >= 13 {
@@ -170,17 +200,31 @@ impl IngestPipeline {
 
             let morton = MortonCode::from_world(
                 cx, cy, cz,
-                self.sdf_storage_world_min(),
-                self.sdf_storage_world_max(),
+                self.world_min,
+                self.world_max,
             );
 
-            // Store as keyframe (use SDF value = 0.0 as placeholder for binary blob)
-            self.sdf_storage.store_keyframe(morton, scene_version, 0.0)
+            // Extract SDF value from payload (first f32 after position data)
+            let sdf_value = if decrypted.len() >= 17 {
+                f32::from_le_bytes(decrypted[13..17].try_into().unwrap())
+            } else {
+                0.0
+            };
+
+            self.sdf_storage.store_keyframe(morton, scene_version, sdf_value)
                 .map_err(|e| IngestError::StorageError(e.to_string()))?;
+
+            // Route keyframe to CDN edge node (Maglev consistent hash)
+            cdn_node = self.cdn_router.lock().as_ref()
+                .and_then(|router: &SdfCdnRouter| router.route_sdf_request(morton.0 as u32));
         }
 
+        // Step 5: Cache frame and track hit/miss
         let cache_key = (device_id << 32) | (scene_version as u64);
+        let cache_hit = self.frame_cache.get(&cache_key).is_some();
+        self.frame_cache.put(cache_key, decrypted);
 
+        // Step 6: Sync to other devices
         let sync_recipients = {
             let mut hub = self.sync_hub.lock();
             let mut device_name = String::with_capacity(24);
@@ -200,20 +244,32 @@ impl IngestPipeline {
             )
         };
 
+        // Step 7: Route to processing queue
+        let queue_index = {
+            let msg = GatewayMessage {
+                source_device_id: device_id,
+                timestamp_ms: start.elapsed().as_millis() as u64,
+                priority: if is_keyframe { MessagePriority::High } else { MessagePriority::Normal },
+                payload: Vec::new(),
+                routing_key: scene_version,
+            };
+            self.queue_router.lock().route_with_priority(&msg)
+        };
+
+        // Step 8: Record telemetry and routing stats
         let raw_len = raw_data.len();
         let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
         {
             let mut tel = self.telemetry.lock();
             tel.record_packet(device_id, raw_len, latency_ms, is_keyframe);
         }
-
         {
             let mut stats = self.routing_stats.lock();
             stats.total_requests += 1;
-            stats.cache_hits += 1;
+            if cache_hit {
+                stats.cache_hits += 1;
+            }
         }
-
-        self.frame_cache.put(cache_key, decrypted);
 
         Ok(IngestResult {
             device_id,
@@ -221,6 +277,9 @@ impl IngestPipeline {
             scene_version,
             sync_recipients: sync_recipients.len(),
             cached: true,
+            cdn_node,
+            queue_index,
+            latency_ms,
         })
     }
 
@@ -256,14 +315,6 @@ impl IngestPipeline {
         self.sync_hub.lock().connected_devices().len()
     }
 
-    // Internal helpers for world bounds access
-    fn sdf_storage_world_min(&self) -> [f32; 3] {
-        [-100.0, -100.0, -100.0] // Match constructor
-    }
-
-    fn sdf_storage_world_max(&self) -> [f32; 3] {
-        [100.0, 100.0, 100.0]
-    }
 }
 
 #[cfg(test)]
@@ -319,6 +370,9 @@ mod tests {
         assert!(result.is_keyframe);
         assert_eq!(result.scene_version, 1);
         assert!(result.cached);
+        // No CDN router configured, so cdn_node should be None
+        assert!(result.cdn_node.is_none());
+        assert!(result.latency_ms >= 0.0);
     }
 
     #[test]
@@ -331,6 +385,8 @@ mod tests {
         assert_eq!(result.device_id, 2);
         assert!(!result.is_keyframe);
         assert_eq!(result.scene_version, 5);
+        // Delta packets never get CDN routing
+        assert!(result.cdn_node.is_none());
     }
 
     #[test]
@@ -382,5 +438,62 @@ mod tests {
         pipeline.process_packet(&pkt2, src).unwrap();
 
         assert_eq!(pipeline.connected_device_count(), 2);
+    }
+
+    #[test]
+    fn test_queue_routing() {
+        let pipeline = make_test_pipeline();
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        let pkt_kf = make_test_packet(1, 1, true);
+        let pkt_delta = make_test_packet(1, 2, false);
+
+        let r1 = pipeline.process_packet(&pkt_kf, src).unwrap();
+        let r2 = pipeline.process_packet(&pkt_delta, src).unwrap();
+
+        // Keyframes use High priority → route_with_priority
+        // Queue index is deterministic based on scene_version % 4
+        assert!(r1.queue_index < 4);
+        assert!(r2.queue_index < 4);
+    }
+
+    #[test]
+    fn test_routing_stats_cache_tracking() {
+        let pipeline = make_test_pipeline();
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        // First packet: cache miss (new entry)
+        let pkt1 = make_test_packet(1, 1, true);
+        pipeline.process_packet(&pkt1, src).unwrap();
+
+        let stats1 = pipeline.routing_stats();
+        assert_eq!(stats1.total_requests, 1);
+        assert_eq!(stats1.cache_hits, 0); // First time = miss
+
+        // Same device + scene_version: cache hit
+        let pkt2 = make_test_packet(1, 1, true);
+        pipeline.process_packet(&pkt2, src).unwrap();
+
+        let stats2 = pipeline.routing_stats();
+        assert_eq!(stats2.total_requests, 2);
+        assert_eq!(stats2.cache_hits, 1); // Second time = hit
+    }
+
+    #[test]
+    fn test_sdf_value_extraction() {
+        let pipeline = make_test_pipeline();
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        // Keyframe packet stores SDF data; test that it doesn't error
+        let pkt = make_test_packet(1, 1, true);
+        let result = pipeline.process_packet(&pkt, src).unwrap();
+        assert!(result.is_keyframe);
+
+        // Verify spatial query returns data
+        let data = pipeline.query_spatial_region(
+            [-1.0, -1.0, -1.0],
+            [1.0, 1.0, 1.0],
+        );
+        assert!(data.is_ok());
     }
 }

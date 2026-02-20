@@ -21,6 +21,9 @@ libasp = { path = "../ALICE-Streaming-Protocol", default-features = false }
 # Async Runtime
 tokio = { version = "1.0", features = ["full"] }
 
+# Concurrency
+parking_lot = "0.12"
+
 # Logging
 log = "0.4"
 env_logger = "0.11"

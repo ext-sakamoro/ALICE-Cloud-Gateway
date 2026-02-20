@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ALICE-Cloud-Gateway
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-db
+          path: ALICE-DB
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-cache
+          path: ALICE-Cache
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-sync
+          path: ALICE-Sync
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-cdn
+          path: ALICE-CDN
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-crypto
+          path: ALICE-Crypto
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-analytics
+          path: ALICE-Analytics
+      - uses: actions/checkout@v4
+        with:
+          repository: anthropics/alice-streaming-protocol
+          path: ALICE-Streaming-Protocol
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ALICE-Cloud-Gateway
+      - name: Build
+        working-directory: ALICE-Cloud-Gateway
+        run: cargo build --lib
+      - name: Test
+        working-directory: ALICE-Cloud-Gateway
+        run: cargo test
