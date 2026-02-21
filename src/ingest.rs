@@ -78,6 +78,21 @@ impl std::error::Error for IngestError {}
 /// 6. Route to CDN edge nodes (ALICE-CDN)
 /// 7. Route to processing queues (ALICE-Queue)
 /// 8. Record telemetry (ALICE-Analytics)
+///
+/// # Lock Ordering
+///
+/// To prevent deadlocks, all code that acquires multiple locks from this struct
+/// MUST acquire them in the following canonical order:
+///
+///   1. `cdn_router`
+///   2. `sync_hub`
+///   3. `queue_router`
+///   4. `telemetry`
+///   5. `routing_stats`
+///
+/// Never acquire a lock with a lower number while already holding one with a
+/// higher number. `DeviceKeyStore::key_cache` is internal and must be released
+/// before acquiring any of the above locks.
 pub struct IngestPipeline {
     /// Device key management
     key_store: DeviceKeyStore,
@@ -85,15 +100,16 @@ pub struct IngestPipeline {
     sdf_storage: SdfStorage,
     /// Hot frame cache: (device_id << 32 | scene_version) → packet bytes
     frame_cache: AliceCache<u64, Vec<u8>>,
-    /// Multi-device sync hub
-    sync_hub: Mutex<CloudSyncHub>,
-    /// CDN routing (initialized via `set_cdn_router`)
+    // ---- Mutexes: acquire ONLY in the canonical order documented above ----
+    /// (Lock #1) CDN routing (initialized via `set_cdn_router`)
     cdn_router: Mutex<Option<SdfCdnRouter>>,
-    /// Message queue router
+    /// (Lock #2) Multi-device sync hub
+    sync_hub: Mutex<CloudSyncHub>,
+    /// (Lock #3) Message queue router
     queue_router: Mutex<GatewayRouter>,
-    /// Telemetry collection
+    /// (Lock #4) Telemetry collection
     telemetry: Mutex<GatewayTelemetry>,
-    /// CDN routing stats
+    /// (Lock #5) CDN routing stats
     routing_stats: Mutex<SdfRoutingStats>,
     /// World bounds min (stored from constructor for SDF spatial indexing)
     world_min: [f32; 3],
@@ -120,18 +136,16 @@ impl IngestPipeline {
         let key_store = DeviceKeyStore::new(master_secret);
         let sdf_storage = SdfStorage::open(format!("{}/sdf", db_path), world_min, world_max)?;
         let frame_cache = AliceCache::new(cache_capacity);
-        let sync_hub = Mutex::new(CloudSyncHub::new());
-        let telemetry = Mutex::new(GatewayTelemetry::new());
-        let queue_router = Mutex::new(GatewayRouter::new(4)); // 4 processing queues
 
         Ok(Self {
             key_store,
             sdf_storage,
             frame_cache,
-            sync_hub,
+            // Locks in canonical order (1 → 5)
             cdn_router: Mutex::new(None),
-            queue_router,
-            telemetry,
+            sync_hub: Mutex::new(CloudSyncHub::new()),
+            queue_router: Mutex::new(GatewayRouter::new(4)), // 4 processing queues
+            telemetry: Mutex::new(GatewayTelemetry::new()),
             routing_stats: Mutex::new(SdfRoutingStats::default()),
             world_min,
             world_max,
@@ -163,8 +177,16 @@ impl IngestPipeline {
             ));
         }
 
-        let device_id = u64::from_le_bytes(raw_data[..8].try_into().unwrap());
-        let scene_version = u32::from_le_bytes(raw_data[8..12].try_into().unwrap());
+        let device_id = u64::from_le_bytes(
+            raw_data[..8]
+                .try_into()
+                .map_err(|_| IngestError::MalformedPacket("Invalid device_id field".to_string()))?,
+        );
+        let scene_version = u32::from_le_bytes(
+            raw_data[8..12]
+                .try_into()
+                .map_err(|_| IngestError::MalformedPacket("Invalid scene_version field".to_string()))?,
+        );
 
         // Step 2: Decrypt packet payload
         let stream_key = self.key_store.derive_device_key(device_id);
@@ -180,9 +202,21 @@ impl IngestPipeline {
         if is_keyframe && decrypted.len() > 1 {
             // Extract center coordinates from payload (bytes 1-12)
             let (cx, cy, cz) = if decrypted.len() >= 13 {
-                let cx = f32::from_le_bytes(decrypted[1..5].try_into().unwrap());
-                let cy = f32::from_le_bytes(decrypted[5..9].try_into().unwrap());
-                let cz = f32::from_le_bytes(decrypted[9..13].try_into().unwrap());
+                let cx = f32::from_le_bytes(
+                    decrypted[1..5]
+                        .try_into()
+                        .map_err(|_| IngestError::MalformedPacket("Invalid cx field".to_string()))?,
+                );
+                let cy = f32::from_le_bytes(
+                    decrypted[5..9]
+                        .try_into()
+                        .map_err(|_| IngestError::MalformedPacket("Invalid cy field".to_string()))?,
+                );
+                let cz = f32::from_le_bytes(
+                    decrypted[9..13]
+                        .try_into()
+                        .map_err(|_| IngestError::MalformedPacket("Invalid cz field".to_string()))?,
+                );
                 (cx, cy, cz)
             } else {
                 (0.0, 0.0, 0.0)
@@ -192,7 +226,11 @@ impl IngestPipeline {
 
             // Extract SDF value from payload (first f32 after position data)
             let sdf_value = if decrypted.len() >= 17 {
-                f32::from_le_bytes(decrypted[13..17].try_into().unwrap())
+                f32::from_le_bytes(
+                    decrypted[13..17]
+                        .try_into()
+                        .map_err(|_| IngestError::MalformedPacket("Invalid sdf_value field".to_string()))?,
+                )
             } else {
                 0.0
             };
@@ -247,15 +285,18 @@ impl IngestPipeline {
             self.queue_router.lock().route_with_priority(&msg)
         };
 
-        // Step 8: Record telemetry and routing stats
+        // Step 8: Record telemetry and routing stats.
+        // Locks acquired in canonical order: telemetry (#4) before routing_stats (#5).
         let raw_len = raw_data.len();
         let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+        // Acquire telemetry (#4) and release before acquiring routing_stats (#5),
+        // preserving strict ascending lock order and minimising hold time.
         {
             let mut tel = self.telemetry.lock();
             tel.record_packet(device_id, raw_len, latency_ms, is_keyframe);
         }
         {
-            let mut stats = self.routing_stats.lock();
+            let mut stats = self.routing_stats.lock(); // lock #5 — always last
             stats.total_requests += 1;
             if cache_hit {
                 stats.cache_hits += 1;
