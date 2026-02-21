@@ -6,7 +6,7 @@ use log::{error, info, warn};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 
-use alice_cloud_gateway::{GatewayConfig, ingest::IngestPipeline};
+use alice_cloud_gateway::{ingest::IngestPipeline, GatewayConfig};
 
 /// Run the cloud gateway
 async fn run_gateway(config: GatewayConfig) -> std::io::Result<()> {
