@@ -1,57 +1,12 @@
-//! ALICE Cloud Gateway
-//!
-//! Receives ASP packets from edge devices, decrypts, routes to
-//! ALICE-DB / ALICE-Cache / ALICE-Sync / ALICE-CDN subsystems.
+//! ALICE Cloud Gateway Binary
 //!
 //! Author: Moroya Sakamoto
 
-mod container_bridge;
-mod device_keys;
-mod ingest;
-mod queue_bridge;
-mod telemetry;
-
 use log::{error, info, warn};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 
-use crate::device_keys::DeviceKeyStore;
-use crate::ingest::IngestPipeline;
-use crate::telemetry::GatewayTelemetry;
-
-/// Gateway configuration
-pub struct GatewayConfig {
-    /// UDP listen address (QUIC/ASP)
-    pub listen_addr: SocketAddr,
-    /// Maximum packet size (bytes)
-    pub max_packet_size: usize,
-    /// Database storage path
-    pub db_path: String,
-    /// Cache capacity (entries)
-    pub cache_capacity: usize,
-    /// Master secret for key derivation
-    pub master_secret: [u8; 32],
-    /// World bounds for SDF storage
-    pub world_min: [f32; 3],
-    pub world_max: [f32; 3],
-}
-
-impl Default for GatewayConfig {
-    fn default() -> Self {
-        Self {
-            listen_addr: "0.0.0.0:4433"
-                .parse()
-                .expect("default listen address is a valid SocketAddr"),
-            max_packet_size: 65535,
-            db_path: "./alice-gateway-data".to_string(),
-            cache_capacity: 100_000,
-            master_secret: [0u8; 32],
-            world_min: [-100.0, -100.0, -100.0],
-            world_max: [100.0, 100.0, 100.0],
-        }
-    }
-}
+use alice_cloud_gateway::{GatewayConfig, ingest::IngestPipeline};
 
 /// Run the cloud gateway
 async fn run_gateway(config: GatewayConfig) -> std::io::Result<()> {
@@ -106,17 +61,4 @@ fn main() -> std::io::Result<()> {
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(run_gateway(config))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_gateway_config_default() {
-        let config = GatewayConfig::default();
-        assert_eq!(config.listen_addr.port(), 4433);
-        assert_eq!(config.max_packet_size, 65535);
-        assert_eq!(config.cache_capacity, 100_000);
-    }
 }
