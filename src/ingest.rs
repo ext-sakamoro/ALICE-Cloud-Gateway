@@ -166,7 +166,7 @@ impl IngestPipeline {
     pub fn process_packet(
         &self,
         raw_data: &[u8],
-        source: SocketAddr,
+        _source: SocketAddr,
     ) -> Result<IngestResult, IngestError> {
         let start = std::time::Instant::now();
 
@@ -524,5 +524,143 @@ mod tests {
         // Verify spatial query returns data
         let data = pipeline.query_spatial_region([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
         assert!(data.is_ok());
+    }
+
+    #[test]
+    fn test_ingest_packet_exactly_11_bytes() {
+        let pipeline = make_test_pipeline();
+        let packet = vec![0u8; 11]; // 11 bytes, still < 12
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        let err = pipeline.process_packet(&packet, src).unwrap_err();
+        match err {
+            IngestError::MalformedPacket(msg) => {
+                assert!(msg.contains("12 bytes"), "Error message: {}", msg);
+            }
+            _ => panic!("Expected MalformedPacket, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_ingest_packet_exactly_12_bytes_decryption_failure() {
+        let pipeline = make_test_pipeline();
+        // 12 bytes: valid header, but empty encrypted payload will fail decryption
+        let mut packet = vec![0u8; 12];
+        packet[..8].copy_from_slice(&1u64.to_le_bytes()); // device_id = 1
+        packet[8..12].copy_from_slice(&1u32.to_le_bytes()); // scene_version = 1
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        let err = pipeline.process_packet(&packet, src).unwrap_err();
+        match err {
+            IngestError::DecryptionFailed(_) => {} // expected
+            _ => panic!("Expected DecryptionFailed, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_ingest_error_display() {
+        let e1 = IngestError::UnknownDevice(42);
+        assert_eq!(format!("{}", e1), "Unknown device: 42");
+
+        let e2 = IngestError::DecryptionFailed("bad key".to_string());
+        assert_eq!(format!("{}", e2), "Decryption failed: bad key");
+
+        let e3 = IngestError::MalformedPacket("too short".to_string());
+        assert_eq!(format!("{}", e3), "Malformed packet: too short");
+
+        let e4 = IngestError::StorageError("disk full".to_string());
+        assert_eq!(format!("{}", e4), "Storage error: disk full");
+    }
+
+    #[test]
+    fn test_ingest_error_is_error_trait() {
+        let e: Box<dyn std::error::Error> =
+            Box::new(IngestError::MalformedPacket("test".to_string()));
+        assert!(!e.to_string().is_empty());
+    }
+
+    #[test]
+    fn test_get_cached_frame_miss() {
+        let pipeline = make_test_pipeline();
+        // No packets processed, cache should be empty
+        assert!(pipeline.get_cached_frame(1, 1).is_none());
+    }
+
+    #[test]
+    fn test_get_cached_frame_wrong_version() {
+        let pipeline = make_test_pipeline();
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        let pkt = make_test_packet(1, 1, true);
+        pipeline.process_packet(&pkt, src).unwrap();
+
+        // Cached for (device=1, version=1), but query for version=2 should miss
+        assert!(pipeline.get_cached_frame(1, 2).is_none());
+    }
+
+    #[test]
+    fn test_connected_device_count_initially_zero() {
+        let pipeline = make_test_pipeline();
+        assert_eq!(pipeline.connected_device_count(), 0);
+    }
+
+    #[test]
+    fn test_process_multiple_scene_versions() {
+        let pipeline = make_test_pipeline();
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        for version in 1..=5 {
+            let pkt = make_test_packet(1, version, version % 2 == 0);
+            let result = pipeline.process_packet(&pkt, src).unwrap();
+            assert_eq!(result.scene_version, version);
+        }
+
+        let tel = pipeline.telemetry_snapshot();
+        assert_eq!(tel.total_packets, 5);
+    }
+
+    #[test]
+    fn test_routing_stats_initial() {
+        let pipeline = make_test_pipeline();
+        let stats = pipeline.routing_stats();
+        assert_eq!(stats.total_requests, 0);
+        assert_eq!(stats.cache_hits, 0);
+    }
+
+    #[test]
+    fn test_ingest_result_debug() {
+        let result = IngestResult {
+            device_id: 1,
+            is_keyframe: true,
+            scene_version: 42,
+            sync_recipients: 3,
+            cached: true,
+            cdn_node: Some(7),
+            queue_index: 2,
+            latency_ms: 1.5,
+        };
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("device_id"));
+        assert!(debug_str.contains("42"));
+    }
+
+    #[test]
+    fn test_telemetry_snapshot_independent() {
+        let pipeline = make_test_pipeline();
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        let pkt = make_test_packet(1, 1, true);
+        pipeline.process_packet(&pkt, src).unwrap();
+
+        let snap1 = pipeline.telemetry_snapshot();
+        assert_eq!(snap1.total_packets, 1);
+
+        // Process another packet; snap1 should not change
+        let pkt2 = make_test_packet(2, 1, false);
+        pipeline.process_packet(&pkt2, src).unwrap();
+
+        assert_eq!(snap1.total_packets, 1); // snapshot is a clone
+        let snap2 = pipeline.telemetry_snapshot();
+        assert_eq!(snap2.total_packets, 2);
     }
 }

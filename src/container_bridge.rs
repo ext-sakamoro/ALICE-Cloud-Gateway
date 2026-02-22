@@ -82,7 +82,7 @@ impl ContainerOrchestrator {
     /// Health check (returns status based on simple heuristic)
     pub fn health_check(
         &mut self,
-        container_id: u64,
+        _container_id: u64,
         cpu_usage_pct: f32,
         mem_usage_pct: f32,
     ) -> HealthStatus {
@@ -165,5 +165,110 @@ mod tests {
         assert_eq!(r1.container_ids, vec![1, 2]);
         assert_eq!(r2.container_ids, vec![3, 4]);
         assert_eq!(orch.deployments, 2);
+    }
+
+    #[test]
+    fn test_deploy_zero_replicas() {
+        let mut orch = ContainerOrchestrator::new();
+        let req = DeployRequest {
+            image_hash: [0; 32],
+            cpu_limit_us: 100_000,
+            memory_limit: 256 * 1024 * 1024,
+            replicas: 0,
+            region: 0,
+        };
+        let result = orch.deploy(&req);
+        assert!(result.container_ids.is_empty());
+        assert_eq!(result.status, HealthStatus::Healthy);
+        assert_eq!(orch.deployments, 1);
+    }
+
+    #[test]
+    fn test_scale_to_same_count() {
+        let mut orch = ContainerOrchestrator::new();
+        let initial = vec![1, 2, 3];
+        let scaled = orch.scale(&initial, 3);
+        assert_eq!(scaled, vec![1, 2, 3]);
+        assert_eq!(orch.scale_events, 1);
+    }
+
+    #[test]
+    fn test_scale_to_zero() {
+        let mut orch = ContainerOrchestrator::new();
+        let initial = vec![1, 2, 3];
+        let scaled = orch.scale(&initial, 0);
+        assert!(scaled.is_empty());
+        assert_eq!(orch.scale_events, 1);
+    }
+
+    #[test]
+    fn test_health_check_boundary_80() {
+        let mut orch = ContainerOrchestrator::new();
+        // Exactly 80.0 should be Healthy (threshold is > 80.0)
+        assert_eq!(orch.health_check(1, 80.0, 80.0), HealthStatus::Healthy);
+    }
+
+    #[test]
+    fn test_health_check_boundary_95() {
+        let mut orch = ContainerOrchestrator::new();
+        // Exactly 95.0 should be Degraded (threshold for Unhealthy is > 95.0)
+        assert_eq!(orch.health_check(1, 95.0, 95.0), HealthStatus::Degraded);
+    }
+
+    #[test]
+    fn test_health_check_mem_degraded() {
+        let mut orch = ContainerOrchestrator::new();
+        // CPU OK but memory above 80
+        assert_eq!(orch.health_check(1, 50.0, 85.0), HealthStatus::Degraded);
+    }
+
+    #[test]
+    fn test_health_check_mem_unhealthy() {
+        let mut orch = ContainerOrchestrator::new();
+        // CPU OK but memory above 95
+        assert_eq!(orch.health_check(1, 50.0, 96.0), HealthStatus::Unhealthy);
+    }
+
+    #[test]
+    fn test_health_check_counter() {
+        let mut orch = ContainerOrchestrator::new();
+        orch.health_check(1, 50.0, 50.0);
+        orch.health_check(2, 50.0, 50.0);
+        orch.health_check(3, 50.0, 50.0);
+        assert_eq!(orch.health_checks, 3);
+    }
+
+    #[test]
+    fn test_health_status_repr() {
+        assert_eq!(HealthStatus::Healthy as u8, 0);
+        assert_eq!(HealthStatus::Degraded as u8, 1);
+        assert_eq!(HealthStatus::Unhealthy as u8, 2);
+        assert_eq!(HealthStatus::Unknown as u8, 3);
+    }
+
+    #[test]
+    fn test_deploy_result_debug() {
+        let result = DeployResult {
+            container_ids: vec![1, 2],
+            status: HealthStatus::Healthy,
+        };
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("container_ids"));
+        assert!(debug_str.contains("Healthy"));
+    }
+
+    #[test]
+    fn test_deploy_request_clone() {
+        let req = DeployRequest {
+            image_hash: [0xDE; 32],
+            cpu_limit_us: 50_000,
+            memory_limit: 128 * 1024 * 1024,
+            replicas: 5,
+            region: 2,
+        };
+        let cloned = req.clone();
+        assert_eq!(cloned.image_hash, req.image_hash);
+        assert_eq!(cloned.replicas, 5);
+        assert_eq!(cloned.region, 2);
     }
 }
