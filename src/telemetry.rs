@@ -32,6 +32,12 @@ pub struct GatewayTelemetry {
     device_frequency: CountMinSketch2048x7,
 }
 
+impl Default for GatewayTelemetry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GatewayTelemetry {
     /// Create a new telemetry collector
     pub fn new() -> Self {
@@ -247,5 +253,93 @@ mod tests {
         assert_eq!(summary.total_packets, 2);
         assert_eq!(summary.total_bytes, 700);
         assert!((summary.avg_packet_size - 350.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_telemetry_empty_avg_packet_size() {
+        let tel = GatewayTelemetry::new();
+        // Division by zero guard
+        assert_eq!(tel.avg_packet_size(), 0.0);
+    }
+
+    #[test]
+    fn test_telemetry_empty_keyframe_ratio() {
+        let tel = GatewayTelemetry::new();
+        // Division by zero guard
+        assert_eq!(tel.keyframe_ratio(), 0.0);
+    }
+
+    #[test]
+    fn test_telemetry_all_keyframes() {
+        let mut tel = GatewayTelemetry::new();
+        for _ in 0..10 {
+            tel.record_packet(1, 100, 1.0, true);
+        }
+        assert_eq!(tel.keyframe_count, 10);
+        assert_eq!(tel.delta_count, 0);
+        assert!((tel.keyframe_ratio() - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_telemetry_all_deltas() {
+        let mut tel = GatewayTelemetry::new();
+        for _ in 0..10 {
+            tel.record_packet(1, 100, 1.0, false);
+        }
+        assert_eq!(tel.keyframe_count, 0);
+        assert_eq!(tel.delta_count, 10);
+        assert!((tel.keyframe_ratio() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_telemetry_p95_between_p50_and_p99() {
+        let mut tel = GatewayTelemetry::new();
+        for i in 1..=1000 {
+            tel.record_packet(1, 100, i as f64, false);
+        }
+        let p50 = tel.p50_latency_ms();
+        let p95 = tel.p95_latency_ms();
+        let p99 = tel.p99_latency_ms();
+        assert!(p50 <= p95, "P50 ({}) > P95 ({})", p50, p95);
+        assert!(p95 <= p99, "P95 ({}) > P99 ({})", p95, p99);
+    }
+
+    #[test]
+    fn test_telemetry_summary_fields_match() {
+        let mut tel = GatewayTelemetry::new();
+        tel.record_packet(1, 1000, 5.0, true);
+        tel.record_packet(2, 500, 2.0, false);
+        tel.record_packet(3, 750, 3.0, true);
+
+        let summary = tel.summary();
+        assert_eq!(summary.total_packets, tel.total_packets);
+        assert_eq!(summary.keyframe_count, tel.keyframe_count);
+        assert_eq!(summary.delta_count, tel.delta_count);
+        assert_eq!(summary.total_bytes, tel.total_bytes);
+        assert!((summary.avg_packet_size - tel.avg_packet_size()).abs() < f64::EPSILON);
+        assert!((summary.keyframe_ratio - tel.keyframe_ratio()).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_telemetry_device_frequency_unknown_device() {
+        let tel = GatewayTelemetry::new();
+        // Querying an unseen device should return 0 (or very small value)
+        let freq = tel.device_packet_estimate(999);
+        assert_eq!(freq, 0);
+    }
+
+    #[test]
+    fn test_telemetry_clone() {
+        let mut tel = GatewayTelemetry::new();
+        tel.record_packet(1, 100, 1.0, true);
+
+        let cloned = tel.clone();
+        assert_eq!(cloned.total_packets, 1);
+        assert_eq!(cloned.keyframe_count, 1);
+
+        // Mutating original should not affect clone
+        tel.record_packet(2, 200, 2.0, false);
+        assert_eq!(cloned.total_packets, 1);
+        assert_eq!(tel.total_packets, 2);
     }
 }

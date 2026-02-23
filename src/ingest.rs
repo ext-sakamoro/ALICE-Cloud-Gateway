@@ -177,16 +177,13 @@ impl IngestPipeline {
             ));
         }
 
-        let device_id = u64::from_le_bytes(
-            raw_data[..8]
-                .try_into()
-                .map_err(|_| IngestError::MalformedPacket("Invalid device_id field".to_string()))?,
-        );
-        let scene_version = u32::from_le_bytes(
-            raw_data[8..12]
-                .try_into()
-                .map_err(|_| IngestError::MalformedPacket("Invalid scene_version field".to_string()))?,
-        );
+        let device_id =
+            u64::from_le_bytes(raw_data[..8].try_into().map_err(|_| {
+                IngestError::MalformedPacket("Invalid device_id field".to_string())
+            })?);
+        let scene_version = u32::from_le_bytes(raw_data[8..12].try_into().map_err(|_| {
+            IngestError::MalformedPacket("Invalid scene_version field".to_string())
+        })?);
 
         // Step 2: Decrypt packet payload
         let stream_key = self.key_store.derive_device_key(device_id);
@@ -201,36 +198,29 @@ impl IngestPipeline {
         let mut cdn_node = None;
         if is_keyframe && decrypted.len() > 1 {
             // Extract center coordinates from payload (bytes 1-12)
-            let (cx, cy, cz) = if decrypted.len() >= 13 {
-                let cx = f32::from_le_bytes(
-                    decrypted[1..5]
-                        .try_into()
-                        .map_err(|_| IngestError::MalformedPacket("Invalid cx field".to_string()))?,
-                );
-                let cy = f32::from_le_bytes(
-                    decrypted[5..9]
-                        .try_into()
-                        .map_err(|_| IngestError::MalformedPacket("Invalid cy field".to_string()))?,
-                );
-                let cz = f32::from_le_bytes(
-                    decrypted[9..13]
-                        .try_into()
-                        .map_err(|_| IngestError::MalformedPacket("Invalid cz field".to_string()))?,
-                );
-                (cx, cy, cz)
-            } else {
-                (0.0, 0.0, 0.0)
-            };
+            let (cx, cy, cz) =
+                if decrypted.len() >= 13 {
+                    let cx = f32::from_le_bytes(decrypted[1..5].try_into().map_err(|_| {
+                        IngestError::MalformedPacket("Invalid cx field".to_string())
+                    })?);
+                    let cy = f32::from_le_bytes(decrypted[5..9].try_into().map_err(|_| {
+                        IngestError::MalformedPacket("Invalid cy field".to_string())
+                    })?);
+                    let cz = f32::from_le_bytes(decrypted[9..13].try_into().map_err(|_| {
+                        IngestError::MalformedPacket("Invalid cz field".to_string())
+                    })?);
+                    (cx, cy, cz)
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
 
             let morton = MortonCode::from_world(cx, cy, cz, self.world_min, self.world_max);
 
             // Extract SDF value from payload (first f32 after position data)
             let sdf_value = if decrypted.len() >= 17 {
-                f32::from_le_bytes(
-                    decrypted[13..17]
-                        .try_into()
-                        .map_err(|_| IngestError::MalformedPacket("Invalid sdf_value field".to_string()))?,
-                )
+                f32::from_le_bytes(decrypted[13..17].try_into().map_err(|_| {
+                    IngestError::MalformedPacket("Invalid sdf_value field".to_string())
+                })?)
             } else {
                 0.0
             };
@@ -244,7 +234,7 @@ impl IngestPipeline {
                 .cdn_router
                 .lock()
                 .as_ref()
-                .and_then(|router: &SdfCdnRouter| router.route_sdf_request(morton.0 as u32));
+                .and_then(|router: &SdfCdnRouter| router.route_sdf_request(morton.0));
         }
 
         // Step 5: Cache frame and track hit/miss

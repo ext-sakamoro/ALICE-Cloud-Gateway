@@ -57,4 +57,46 @@ mod tests {
         assert_eq!(config.max_packet_size, 65535);
         assert_eq!(config.cache_capacity, 100_000);
     }
+
+    #[test]
+    fn test_gateway_config_default_listen_addr_ip() {
+        let config = GatewayConfig::default();
+        assert_eq!(config.listen_addr.ip(), std::net::Ipv4Addr::UNSPECIFIED);
+    }
+
+    #[test]
+    fn test_gateway_config_default_master_secret_zeroed() {
+        let config = GatewayConfig::default();
+        assert_eq!(config.master_secret, [0u8; 32]);
+    }
+
+    #[test]
+    fn test_gateway_config_default_db_path() {
+        let config = GatewayConfig::default();
+        assert_eq!(config.db_path, "./alice-gateway-data");
+    }
+
+    #[test]
+    fn test_gateway_config_default_world_bounds() {
+        let config = GatewayConfig::default();
+        assert_eq!(config.world_min, [-100.0, -100.0, -100.0]);
+        assert_eq!(config.world_max, [100.0, 100.0, 100.0]);
+    }
+
+    #[test]
+    fn test_gateway_config_custom() {
+        let config = GatewayConfig {
+            listen_addr: "127.0.0.1:8080".parse().unwrap(),
+            max_packet_size: 1024,
+            db_path: "/tmp/test".to_string(),
+            cache_capacity: 500,
+            master_secret: [0xFF; 32],
+            world_min: [-50.0, -50.0, -50.0],
+            world_max: [50.0, 50.0, 50.0],
+        };
+        assert_eq!(config.listen_addr.port(), 8080);
+        assert_eq!(config.max_packet_size, 1024);
+        assert_eq!(config.cache_capacity, 500);
+        assert_eq!(config.master_secret, [0xFF; 32]);
+    }
 }

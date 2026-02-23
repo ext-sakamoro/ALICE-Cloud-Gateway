@@ -155,4 +155,129 @@ mod tests {
     fn test_message_too_short() {
         assert!(GatewayMessage::from_bytes(&[0; 10]).is_none());
     }
+
+    #[test]
+    fn test_message_exactly_24_bytes_empty_payload() {
+        let msg = GatewayMessage {
+            source_device_id: 1,
+            timestamp_ms: 100,
+            priority: MessagePriority::Low,
+            payload: vec![],
+            routing_key: 0,
+        };
+        let bytes = msg.to_bytes();
+        let restored = GatewayMessage::from_bytes(&bytes).unwrap();
+        assert_eq!(restored.source_device_id, 1);
+        assert!(restored.payload.is_empty());
+    }
+
+    #[test]
+    fn test_message_invalid_priority_byte() {
+        // Build a minimal 24-byte buffer with invalid priority byte (value 4)
+        let mut buf = vec![0u8; 24];
+        buf[16] = 4; // Invalid priority
+        assert!(GatewayMessage::from_bytes(&buf).is_none());
+    }
+
+    #[test]
+    fn test_message_payload_too_short_for_declared_len() {
+        let msg = GatewayMessage {
+            source_device_id: 1,
+            timestamp_ms: 100,
+            priority: MessagePriority::Normal,
+            payload: vec![0xBB; 10],
+            routing_key: 5,
+        };
+        let mut bytes = msg.to_bytes();
+        // Truncate payload portion so it's shorter than declared
+        bytes.truncate(26);
+        assert!(GatewayMessage::from_bytes(&bytes).is_none());
+    }
+
+    #[test]
+    fn test_routing_distribution() {
+        let mut router = GatewayRouter::new(4);
+        let mut counts = [0u32; 4];
+        for key in 0..100 {
+            let msg = test_msg(key, MessagePriority::Normal);
+            let idx = router.route(&msg);
+            counts[idx as usize] += 1;
+        }
+        // Each queue should get exactly 25 messages (100/4 = 25)
+        assert_eq!(counts, [25, 25, 25, 25]);
+    }
+
+    #[test]
+    fn test_priority_routing_non_critical() {
+        let mut router = GatewayRouter::new(4);
+        // Non-critical messages should route by routing_key
+        let high = test_msg(7, MessagePriority::High);
+        let normal = test_msg(7, MessagePriority::Normal);
+        let low = test_msg(7, MessagePriority::Low);
+        assert_eq!(router.route_with_priority(&high), 3); // 7 % 4 = 3
+        assert_eq!(router.route_with_priority(&normal), 3); // 7 % 4 = 3
+        assert_eq!(router.route_with_priority(&low), 3); // 7 % 4 = 3
+    }
+
+    #[test]
+    fn test_router_new_minimum_queue_count() {
+        // queue_count 0 should be clamped to 1
+        let mut router = GatewayRouter::new(0);
+        let msg = test_msg(42, MessagePriority::Normal);
+        let idx = router.route(&msg);
+        assert_eq!(idx, 0); // 42 % 1 = 0
+    }
+
+    #[test]
+    fn test_message_roundtrip_all_priorities() {
+        for (prio, byte_val) in [
+            (MessagePriority::Low, 0u8),
+            (MessagePriority::Normal, 1),
+            (MessagePriority::High, 2),
+            (MessagePriority::Critical, 3),
+        ] {
+            let msg = GatewayMessage {
+                source_device_id: 0xDEAD,
+                timestamp_ms: 42,
+                priority: prio,
+                payload: vec![1, 2, 3],
+                routing_key: 99,
+            };
+            let bytes = msg.to_bytes();
+            // Verify priority byte position
+            assert_eq!(bytes[16], byte_val);
+            let restored = GatewayMessage::from_bytes(&bytes).unwrap();
+            assert_eq!(restored.priority, prio);
+        }
+    }
+
+    #[test]
+    fn test_priority_ordering() {
+        assert!(MessagePriority::Low < MessagePriority::Normal);
+        assert!(MessagePriority::Normal < MessagePriority::High);
+        assert!(MessagePriority::High < MessagePriority::Critical);
+    }
+
+    #[test]
+    fn test_router_bytes_routed_accumulation() {
+        let mut router = GatewayRouter::new(2);
+        let msg1 = GatewayMessage {
+            source_device_id: 1,
+            timestamp_ms: 0,
+            priority: MessagePriority::Normal,
+            payload: vec![0; 100],
+            routing_key: 0,
+        };
+        let msg2 = GatewayMessage {
+            source_device_id: 1,
+            timestamp_ms: 0,
+            priority: MessagePriority::Normal,
+            payload: vec![0; 200],
+            routing_key: 0,
+        };
+        router.route(&msg1);
+        router.route(&msg2);
+        assert_eq!(router.bytes_routed, 300);
+        assert_eq!(router.messages_routed, 2);
+    }
 }

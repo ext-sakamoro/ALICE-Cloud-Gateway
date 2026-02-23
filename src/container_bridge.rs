@@ -39,6 +39,12 @@ pub struct ContainerOrchestrator {
     pub health_checks: u64,
 }
 
+impl Default for ContainerOrchestrator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContainerOrchestrator {
     pub fn new() -> Self {
         Self {
