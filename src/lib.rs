@@ -11,10 +11,14 @@
 //!
 //! Author: Moroya Sakamoto
 
+pub mod backpressure;
+pub mod circuit_breaker;
 pub mod container_bridge;
 pub mod device_keys;
 pub mod ingest;
+pub mod metrics_export;
 pub mod queue_bridge;
+pub mod rate_limiter;
 pub mod telemetry;
 
 use std::net::SocketAddr;
