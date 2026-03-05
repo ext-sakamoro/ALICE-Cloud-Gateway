@@ -1,8 +1,8 @@
 //! Cloud Gateway Telemetry
 //!
 //! Collects streaming metrics using ALICE-Analytics probabilistic
-//! data structures: DDSketch for latencies, HyperLogLog for unique
-//! device counting, CountMinSketch for per-device packet frequency.
+//! data structures: `DDSketch` for latencies, `HyperLogLog` for unique
+//! device counting, `CountMinSketch` for per-device packet frequency.
 //!
 //! Author: Moroya Sakamoto
 
@@ -11,9 +11,9 @@ use alice_analytics::{CountMinSketch2048x7, DDSketch2048, FnvHasher, HyperLogLog
 /// Gateway telemetry collector
 ///
 /// Uses probabilistic data structures for memory-efficient metrics:
-/// - DDSketch: Latency percentiles (P50, P95, P99)
-/// - HyperLogLog: Unique device count estimation
-/// - CountMinSketch: Per-device packet frequency
+/// - `DDSketch`: Latency percentiles (P50, P95, P99)
+/// - `HyperLogLog`: Unique device count estimation
+/// - `CountMinSketch`: Per-device packet frequency
 #[derive(Clone)]
 pub struct GatewayTelemetry {
     /// Total packets processed
@@ -24,9 +24,9 @@ pub struct GatewayTelemetry {
     pub delta_count: u64,
     /// Total bytes received
     pub total_bytes: u64,
-    /// Latency distribution (DDSketch, 1% relative error)
+    /// Latency distribution (`DDSketch`, 1% relative error)
     latency_sketch: DDSketch2048,
-    /// Unique device estimator (HyperLogLog, ~0.4% error)
+    /// Unique device estimator (`HyperLogLog`, ~0.4% error)
     unique_devices: HyperLogLog16,
     /// Per-device packet frequency (Count-Min Sketch)
     device_frequency: CountMinSketch2048x7,
@@ -40,6 +40,7 @@ impl Default for GatewayTelemetry {
 
 impl GatewayTelemetry {
     /// Create a new telemetry collector
+    #[must_use]
     pub fn new() -> Self {
         Self {
             total_packets: 0,
@@ -63,8 +64,8 @@ impl GatewayTelemetry {
         self.total_packets += 1;
         self.total_bytes += packet_size as u64;
 
-        self.keyframe_count += is_keyframe as u64;
-        self.delta_count += (!is_keyframe) as u64;
+        self.keyframe_count += u64::from(is_keyframe);
+        self.delta_count += u64::from(!is_keyframe);
 
         // Latency percentile tracking
         self.latency_sketch.insert(latency_ms);
@@ -79,32 +80,38 @@ impl GatewayTelemetry {
     }
 
     /// Estimated P50 latency (ms)
+    #[must_use]
     pub fn p50_latency_ms(&self) -> f64 {
         self.latency_sketch.quantile(0.50)
     }
 
     /// Estimated P95 latency (ms)
+    #[must_use]
     pub fn p95_latency_ms(&self) -> f64 {
         self.latency_sketch.quantile(0.95)
     }
 
     /// Estimated P99 latency (ms)
+    #[must_use]
     pub fn p99_latency_ms(&self) -> f64 {
         self.latency_sketch.quantile(0.99)
     }
 
     /// Estimated unique device count
+    #[must_use]
     pub fn estimated_unique_devices(&self) -> f64 {
         self.unique_devices.cardinality()
     }
 
     /// Estimated packet count for a specific device
+    #[must_use]
     pub fn device_packet_estimate(&self, device_id: u64) -> u64 {
         self.device_frequency
             .estimate_hash(FnvHasher::hash_u64(device_id))
     }
 
     /// Average packet size (bytes)
+    #[must_use]
     pub fn avg_packet_size(&self) -> f64 {
         if self.total_packets == 0 {
             return 0.0;
@@ -113,6 +120,7 @@ impl GatewayTelemetry {
     }
 
     /// Keyframe ratio (0.0 - 1.0)
+    #[must_use]
     pub fn keyframe_ratio(&self) -> f64 {
         if self.total_packets == 0 {
             return 0.0;
@@ -121,6 +129,7 @@ impl GatewayTelemetry {
     }
 
     /// Generate summary report
+    #[must_use]
     pub fn summary(&self) -> TelemetrySummary {
         TelemetrySummary {
             total_packets: self.total_packets,
@@ -341,5 +350,36 @@ mod tests {
         tel.record_packet(2, 200, 2.0, false);
         assert_eq!(cloned.total_packets, 1);
         assert_eq!(tel.total_packets, 2);
+    }
+
+    #[test]
+    fn test_telemetry_default() {
+        let tel = GatewayTelemetry::default();
+        assert_eq!(tel.total_packets, 0);
+        assert_eq!(tel.total_bytes, 0);
+    }
+
+    #[test]
+    fn test_telemetry_single_device_frequency() {
+        let mut tel = GatewayTelemetry::new();
+        tel.record_packet(42, 100, 1.0, false);
+        let freq = tel.device_packet_estimate(42);
+        assert!(freq >= 1);
+    }
+
+    #[test]
+    fn test_telemetry_p50_single_sample() {
+        let mut tel = GatewayTelemetry::new();
+        tel.record_packet(1, 100, 5.0, false);
+        let p50 = tel.p50_latency_ms();
+        assert!(p50 > 0.0);
+    }
+
+    #[test]
+    fn test_telemetry_summary_debug() {
+        let tel = GatewayTelemetry::new();
+        let summary = tel.summary();
+        let s = format!("{:?}", summary);
+        assert!(s.contains("total_packets"));
     }
 }

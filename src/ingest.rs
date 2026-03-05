@@ -57,10 +57,10 @@ pub enum IngestError {
 impl std::fmt::Display for IngestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnknownDevice(id) => write!(f, "Unknown device: {}", id),
-            Self::DecryptionFailed(msg) => write!(f, "Decryption failed: {}", msg),
-            Self::MalformedPacket(msg) => write!(f, "Malformed packet: {}", msg),
-            Self::StorageError(msg) => write!(f, "Storage error: {}", msg),
+            Self::UnknownDevice(id) => write!(f, "Unknown device: {id}"),
+            Self::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
+            Self::MalformedPacket(msg) => write!(f, "Malformed packet: {msg}"),
+            Self::StorageError(msg) => write!(f, "Storage error: {msg}"),
         }
     }
 }
@@ -98,7 +98,7 @@ pub struct IngestPipeline {
     key_store: DeviceKeyStore,
     /// SDF spatial storage
     sdf_storage: SdfStorage,
-    /// Hot frame cache: (device_id << 32 | scene_version) → packet bytes
+    /// Hot frame cache: (`device_id` << 32 | `scene_version`) → packet bytes
     frame_cache: AliceCache<u64, Vec<u8>>,
     // ---- Mutexes: acquire ONLY in the canonical order documented above ----
     /// (Lock #1) CDN routing (initialized via `set_cdn_router`)
@@ -126,6 +126,10 @@ impl IngestPipeline {
     /// * `master_secret` - 32-byte master secret for device key derivation
     /// * `world_min` - World space minimum bounds for Morton code indexing
     /// * `world_max` - World space maximum bounds for Morton code indexing
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if pipeline components fail to initialise.
     pub fn new(
         db_path: &str,
         cache_capacity: usize,
@@ -134,7 +138,7 @@ impl IngestPipeline {
         world_max: [f32; 3],
     ) -> std::io::Result<Self> {
         let key_store = DeviceKeyStore::new(master_secret);
-        let sdf_storage = SdfStorage::open(format!("{}/sdf", db_path), world_min, world_max)?;
+        let sdf_storage = SdfStorage::open(format!("{db_path}/sdf"), world_min, world_max)?;
         let frame_cache = AliceCache::new(cache_capacity);
 
         Ok(Self {
@@ -163,6 +167,11 @@ impl IngestPipeline {
     /// Process an incoming ASP packet
     ///
     /// Full pipeline: decrypt → parse → store → cache → sync → telemetry
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IngestError`] if decryption, parsing, or storage fails.
+    #[allow(clippy::too_many_lines)]
     pub fn process_packet(
         &self,
         raw_data: &[u8],
@@ -189,7 +198,7 @@ impl IngestPipeline {
         let stream_key = self.key_store.derive_device_key(device_id);
         let payload = &raw_data[12..];
         let decrypted = alice_crypto::open(&stream_key, payload)
-            .map_err(|e| IngestError::DecryptionFailed(format!("{:?}", e)))?;
+            .map_err(|e| IngestError::DecryptionFailed(format!("{e:?}")))?;
 
         // Step 3: Determine packet type (first byte of decrypted payload)
         let is_keyframe = !decrypted.is_empty() && decrypted[0] == 0x01;
@@ -238,7 +247,7 @@ impl IngestPipeline {
         }
 
         // Step 5: Cache frame and track hit/miss
-        let cache_key = (device_id << 32) | (scene_version as u64);
+        let cache_key = (device_id << 32) | u64::from(scene_version);
         let cache_hit = self.frame_cache.get(&cache_key).is_some();
         self.frame_cache.put(cache_key, decrypted);
 
@@ -246,7 +255,7 @@ impl IngestPipeline {
         let sync_recipients = {
             let mut hub = self.sync_hub.lock();
             let mut device_name = String::with_capacity(24);
-            let _ = write!(device_name, "device-{}", device_id);
+            let _ = write!(device_name, "device-{device_id}");
             hub.register_device(device_id, device_name);
             hub.heartbeat(device_id, start.elapsed().as_millis() as u64);
 
@@ -254,7 +263,7 @@ impl IngestPipeline {
             hub.process_device_update(
                 device_id,
                 scene_version,
-                WorldHash(scene_version as u64),
+                WorldHash(u64::from(scene_version)),
                 update_region,
             )
         };
@@ -306,6 +315,10 @@ impl IngestPipeline {
     }
 
     /// Query SDF data for a spatial region
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IngestError`] if the spatial query fails.
     pub fn query_spatial_region(
         &self,
         region_min: [f32; 3],
@@ -318,7 +331,7 @@ impl IngestPipeline {
 
     /// Get cached frame for a device + scene version
     pub fn get_cached_frame(&self, device_id: u64, scene_version: u32) -> Option<Vec<u8>> {
-        let cache_key = (device_id << 32) | (scene_version as u64);
+        let cache_key = (device_id << 32) | u64::from(scene_version);
         self.frame_cache.get(&cache_key)
     }
 
@@ -652,5 +665,48 @@ mod tests {
         assert_eq!(snap1.total_packets, 1); // snapshot is a clone
         let snap2 = pipeline.telemetry_snapshot();
         assert_eq!(snap2.total_packets, 2);
+    }
+
+    #[test]
+    fn test_ingest_wrong_key_decryption_failure() {
+        let pipeline = make_test_pipeline();
+        // Create packet with different master secret
+        let wrong_store = DeviceKeyStore::new([99u8; 32]);
+        let wrong_key = wrong_store.derive_device_key(1);
+        let payload = vec![0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let sealed = alice_crypto::seal(&wrong_key, &payload).unwrap();
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&1u64.to_le_bytes());
+        packet.extend_from_slice(&1u32.to_le_bytes());
+        packet.extend_from_slice(&sealed);
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+        let err = pipeline.process_packet(&packet, src).unwrap_err();
+        assert!(matches!(err, IngestError::DecryptionFailed(_)));
+    }
+
+    #[test]
+    fn test_ingest_result_debug_format() {
+        let pipeline = make_test_pipeline();
+        let pkt = make_test_packet(1, 1, true);
+        let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+        let result = pipeline.process_packet(&pkt, src).unwrap();
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("device_id"));
+    }
+
+    #[test]
+    fn test_spatial_query_empty_region() {
+        let pipeline = make_test_pipeline();
+        let data = pipeline
+            .query_spatial_region([50.0, 50.0, 50.0], [60.0, 60.0, 60.0])
+            .unwrap();
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn test_ingest_error_is_std_error() {
+        let e: Box<dyn std::error::Error> = Box::new(IngestError::StorageError("test".to_string()));
+        assert!(e.to_string().contains("test"));
     }
 }

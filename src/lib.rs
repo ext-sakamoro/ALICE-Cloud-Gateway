@@ -1,3 +1,9 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+
 //! ALICE Cloud Gateway Library
 //!
 //! Receives ASP packets from edge devices, decrypts, routes to
@@ -98,5 +104,25 @@ mod tests {
         assert_eq!(config.max_packet_size, 1024);
         assert_eq!(config.cache_capacity, 500);
         assert_eq!(config.master_secret, [0xFF; 32]);
+    }
+
+    #[test]
+    fn test_gateway_config_custom_world_bounds() {
+        let config = GatewayConfig {
+            world_min: [-1.0, -2.0, -3.0],
+            world_max: [4.0, 5.0, 6.0],
+            ..Default::default()
+        };
+        assert_eq!(config.world_min[0], -1.0);
+        assert_eq!(config.world_max[2], 6.0);
+    }
+
+    #[test]
+    fn test_gateway_config_custom_max_packet_size() {
+        let config = GatewayConfig {
+            max_packet_size: 128,
+            ..Default::default()
+        };
+        assert_eq!(config.max_packet_size, 128);
     }
 }

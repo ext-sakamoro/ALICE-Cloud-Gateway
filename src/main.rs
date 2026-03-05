@@ -42,13 +42,13 @@ async fn run_gateway(config: GatewayConfig) -> std::io::Result<()> {
                             }
                         }
                         Err(e) => {
-                            warn!("Packet from {} rejected: {}", src, e);
+                            warn!("Packet from {src} rejected: {e}");
                         }
                     }
                 });
             }
             Err(e) => {
-                error!("UDP recv error: {}", e);
+                error!("UDP recv error: {e}");
             }
         }
     }

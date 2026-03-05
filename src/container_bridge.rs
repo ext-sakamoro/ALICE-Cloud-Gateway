@@ -46,6 +46,7 @@ impl Default for ContainerOrchestrator {
 }
 
 impl ContainerOrchestrator {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             next_container_id: 1,
@@ -276,5 +277,32 @@ mod tests {
         assert_eq!(cloned.image_hash, req.image_hash);
         assert_eq!(cloned.replicas, 5);
         assert_eq!(cloned.region, 2);
+    }
+
+    #[test]
+    fn test_orchestrator_default() {
+        let orch = ContainerOrchestrator::default();
+        assert_eq!(orch.deployments, 0);
+        assert_eq!(orch.scale_events, 0);
+        assert_eq!(orch.health_checks, 0);
+    }
+
+    #[test]
+    fn test_scale_from_empty() {
+        let mut orch = ContainerOrchestrator::new();
+        let scaled = orch.scale(&[], 3);
+        assert_eq!(scaled.len(), 3);
+    }
+
+    #[test]
+    fn test_health_status_eq() {
+        assert_eq!(HealthStatus::Healthy, HealthStatus::Healthy);
+        assert_ne!(HealthStatus::Healthy, HealthStatus::Degraded);
+    }
+
+    #[test]
+    fn test_health_check_both_high() {
+        let mut orch = ContainerOrchestrator::new();
+        assert_eq!(orch.health_check(1, 96.0, 96.0), HealthStatus::Unhealthy);
     }
 }

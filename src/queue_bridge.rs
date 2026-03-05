@@ -26,6 +26,7 @@ pub struct GatewayMessage {
 
 impl GatewayMessage {
     /// Serialize header (24 bytes) + payload
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(24 + self.payload.len());
         buf.extend_from_slice(&self.source_device_id.to_le_bytes());
@@ -38,6 +39,7 @@ impl GatewayMessage {
         buf
     }
 
+    #[must_use]
     pub fn from_bytes(buf: &[u8]) -> Option<Self> {
         if buf.len() < 24 {
             return None;
@@ -75,6 +77,7 @@ pub struct GatewayRouter {
 }
 
 impl GatewayRouter {
+    #[must_use]
     pub fn new(queue_count: u32) -> Self {
         Self {
             messages_routed: 0,
@@ -279,5 +282,35 @@ mod tests {
         router.route(&msg2);
         assert_eq!(router.bytes_routed, 300);
         assert_eq!(router.messages_routed, 2);
+    }
+
+    #[test]
+    fn test_message_clone() {
+        let msg = test_msg(5, MessagePriority::High);
+        let cloned = msg.clone();
+        assert_eq!(cloned.routing_key, 5);
+        assert_eq!(cloned.priority, MessagePriority::High);
+    }
+
+    #[test]
+    fn test_message_debug() {
+        let msg = test_msg(1, MessagePriority::Low);
+        let s = format!("{:?}", msg);
+        assert!(s.contains("source_device_id"));
+    }
+
+    #[test]
+    fn test_routing_key_zero() {
+        let mut router = GatewayRouter::new(4);
+        let msg = test_msg(0, MessagePriority::Normal);
+        assert_eq!(router.route(&msg), 0);
+    }
+
+    #[test]
+    fn test_priority_critical_route_with_priority_counters() {
+        let mut router = GatewayRouter::new(4);
+        let msg = test_msg(99, MessagePriority::Critical);
+        router.route_with_priority(&msg);
+        assert_eq!(router.messages_routed, 1);
     }
 }

@@ -16,12 +16,13 @@ use std::fmt::Write as FmtWrite;
 pub struct DeviceKeyStore {
     /// Master secret for key derivation
     master_secret: [u8; 32],
-    /// Cached derived keys: device_id → Key
+    /// Cached derived keys: `device_id` → Key
     key_cache: parking_lot::Mutex<HashMap<u64, Key>>,
 }
 
 impl DeviceKeyStore {
     /// Create a new device key store with the given master secret
+    #[must_use]
     pub fn new(master_secret: [u8; 32]) -> Self {
         Self {
             master_secret,
@@ -40,7 +41,7 @@ impl DeviceKeyStore {
         }
 
         let mut context = String::with_capacity(32);
-        let _ = write!(context, "alice-gw:device:{}", device_id);
+        let _ = write!(context, "alice-gw:device:{device_id}");
         let derived = derive_key(&context, &self.master_secret);
         let key = Key::from_bytes(derived);
         cache.insert(device_id, key.clone());
@@ -214,5 +215,22 @@ mod tests {
         let key2 = store.derive_device_key(7);
         assert_eq!(key1.as_bytes(), key2.as_bytes());
         assert_eq!(store.cached_key_count(), 1);
+    }
+
+    #[test]
+    fn test_derive_key_nonzero() {
+        let store = DeviceKeyStore::new([0xFF; 32]);
+        let derived = store.derive_device_key(1);
+        assert!(!derived.as_bytes().iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn test_revoke_and_count() {
+        let store = DeviceKeyStore::new([1u8; 32]);
+        store.derive_device_key(1);
+        store.derive_device_key(2);
+        store.derive_device_key(3);
+        store.revoke_device(2);
+        assert_eq!(store.cached_key_count(), 2);
     }
 }
