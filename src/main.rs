@@ -9,6 +9,7 @@ use tokio::net::UdpSocket;
 use alice_cloud_gateway::{ingest::IngestPipeline, GatewayConfig};
 
 /// Run the cloud gateway
+#[allow(clippy::large_stack_frames)]
 async fn run_gateway(config: GatewayConfig) -> std::io::Result<()> {
     info!("ALICE Cloud Gateway starting on {}", config.listen_addr);
 

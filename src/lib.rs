@@ -82,6 +82,7 @@ mod tests {
         assert_eq!(config.db_path, "./alice-gateway-data");
     }
 
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_gateway_config_default_world_bounds() {
         let config = GatewayConfig::default();
@@ -106,6 +107,7 @@ mod tests {
         assert_eq!(config.master_secret, [0xFF; 32]);
     }
 
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_gateway_config_custom_world_bounds() {
         let config = GatewayConfig {

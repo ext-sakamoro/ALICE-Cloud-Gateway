@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(store.cached_key_count(), 1);
 
         // Can still derive (just not cached)
-        let key = store.derive_device_key(1);
+        let _key = store.derive_device_key(1);
         assert_eq!(store.cached_key_count(), 2);
     }
 
@@ -180,9 +180,7 @@ mod tests {
                 assert_ne!(
                     keys[i].as_bytes(),
                     keys[j].as_bytes(),
-                    "Device {} and {} produced same key",
-                    i,
-                    j
+                    "Device {i} and {j} produced same key"
                 );
             }
         }

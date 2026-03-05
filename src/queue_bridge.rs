@@ -87,7 +87,7 @@ impl GatewayRouter {
     }
 
     /// Determine target queue index for a message
-    pub fn route(&mut self, msg: &GatewayMessage) -> u32 {
+    pub const fn route(&mut self, msg: &GatewayMessage) -> u32 {
         self.messages_routed += 1;
         self.bytes_routed += msg.payload.len() as u64;
         // Consistent hash: routing_key mod queue_count
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn test_message_clone() {
         let msg = test_msg(5, MessagePriority::High);
-        let cloned = msg.clone();
+        let cloned = msg;
         assert_eq!(cloned.routing_key, 5);
         assert_eq!(cloned.priority, MessagePriority::High);
     }
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn test_message_debug() {
         let msg = test_msg(1, MessagePriority::Low);
-        let s = format!("{:?}", msg);
+        let s = format!("{msg:?}");
         assert!(s.contains("source_device_id"));
     }
 

@@ -47,7 +47,7 @@ impl Default for ContainerOrchestrator {
 
 impl ContainerOrchestrator {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             next_container_id: 1,
             deployments: 0,
@@ -259,7 +259,7 @@ mod tests {
             container_ids: vec![1, 2],
             status: HealthStatus::Healthy,
         };
-        let debug_str = format!("{:?}", result);
+        let debug_str = format!("{result:?}");
         assert!(debug_str.contains("container_ids"));
         assert!(debug_str.contains("Healthy"));
     }

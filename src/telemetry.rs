@@ -182,12 +182,12 @@ mod tests {
 
         // 10 keyframes from device 1
         for i in 0..10 {
-            tel.record_packet(1, 1000, 2.0 + i as f64 * 0.1, true);
+            tel.record_packet(1, 1000, f64::from(i).mul_add(0.1, 2.0), true);
         }
 
         // 90 deltas from device 2
         for i in 0..90 {
-            tel.record_packet(2, 200, 1.0 + i as f64 * 0.01, false);
+            tel.record_packet(2, 200, f64::from(i).mul_add(0.01, 1.0), false);
         }
 
         assert_eq!(tel.total_packets, 100);
@@ -202,15 +202,15 @@ mod tests {
 
         // Insert 100 latency samples: 1.0, 2.0, ..., 100.0
         for i in 1..=100 {
-            tel.record_packet(1, 100, i as f64, false);
+            tel.record_packet(1, 100, f64::from(i), false);
         }
 
         let p50 = tel.p50_latency_ms();
         let p99 = tel.p99_latency_ms();
 
         // P50 should be ~50, P99 should be ~99
-        assert!(p50 > 40.0 && p50 < 60.0, "P50 = {}", p50);
-        assert!(p99 > 90.0 && p99 < 105.0, "P99 = {}", p99);
+        assert!(p50 > 40.0 && p50 < 60.0, "P50 = {p50}");
+        assert!(p99 > 90.0 && p99 < 105.0, "P99 = {p99}");
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
 
         let estimate = tel.estimated_unique_devices();
         // HLL should estimate ~5 ± error
-        assert!(estimate > 3.0 && estimate < 8.0, "Estimate = {}", estimate);
+        assert!(estimate > 3.0 && estimate < 8.0, "Estimate = {estimate}");
     }
 
     #[test]
@@ -248,8 +248,8 @@ mod tests {
         assert!(freq1 >= 100);
         assert!(freq2 >= 10);
         // Should be close to true values
-        assert!(freq1 < 120, "Freq1 = {}", freq1);
-        assert!(freq2 < 20, "Freq2 = {}", freq2);
+        assert!(freq1 < 120, "Freq1 = {freq1}");
+        assert!(freq2 < 20, "Freq2 = {freq2}");
     }
 
     #[test]
@@ -264,6 +264,7 @@ mod tests {
         assert!((summary.avg_packet_size - 350.0).abs() < 0.01);
     }
 
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_telemetry_empty_avg_packet_size() {
         let tel = GatewayTelemetry::new();
@@ -271,6 +272,7 @@ mod tests {
         assert_eq!(tel.avg_packet_size(), 0.0);
     }
 
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_telemetry_empty_keyframe_ratio() {
         let tel = GatewayTelemetry::new();
@@ -304,13 +306,13 @@ mod tests {
     fn test_telemetry_p95_between_p50_and_p99() {
         let mut tel = GatewayTelemetry::new();
         for i in 1..=1000 {
-            tel.record_packet(1, 100, i as f64, false);
+            tel.record_packet(1, 100, f64::from(i), false);
         }
         let p50 = tel.p50_latency_ms();
         let p95 = tel.p95_latency_ms();
         let p99 = tel.p99_latency_ms();
-        assert!(p50 <= p95, "P50 ({}) > P95 ({})", p50, p95);
-        assert!(p95 <= p99, "P95 ({}) > P99 ({})", p95, p99);
+        assert!(p50 <= p95, "P50 ({p50}) > P95 ({p95})");
+        assert!(p95 <= p99, "P95 ({p95}) > P99 ({p99})");
     }
 
     #[test]
@@ -379,7 +381,7 @@ mod tests {
     fn test_telemetry_summary_debug() {
         let tel = GatewayTelemetry::new();
         let summary = tel.summary();
-        let s = format!("{:?}", summary);
+        let s = format!("{summary:?}");
         assert!(s.contains("total_packets"));
     }
 }

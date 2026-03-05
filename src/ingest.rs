@@ -130,6 +130,7 @@ impl IngestPipeline {
     /// # Errors
     ///
     /// Returns an error if pipeline components fail to initialise.
+    #[allow(clippy::large_stack_frames)]
     pub fn new(
         db_path: &str,
         cache_capacity: usize,
@@ -171,7 +172,7 @@ impl IngestPipeline {
     /// # Errors
     ///
     /// Returns [`IngestError`] if decryption, parsing, or storage fails.
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::useless_let_if_seq)]
     pub fn process_packet(
         &self,
         raw_data: &[u8],
@@ -538,9 +539,9 @@ mod tests {
         let err = pipeline.process_packet(&packet, src).unwrap_err();
         match err {
             IngestError::MalformedPacket(msg) => {
-                assert!(msg.contains("12 bytes"), "Error message: {}", msg);
+                assert!(msg.contains("12 bytes"), "Error message: {msg}");
             }
-            _ => panic!("Expected MalformedPacket, got {:?}", err),
+            _ => panic!("Expected MalformedPacket, got {err:?}"),
         }
     }
 
@@ -556,23 +557,23 @@ mod tests {
         let err = pipeline.process_packet(&packet, src).unwrap_err();
         match err {
             IngestError::DecryptionFailed(_) => {} // expected
-            _ => panic!("Expected DecryptionFailed, got {:?}", err),
+            _ => panic!("Expected DecryptionFailed, got {err:?}"),
         }
     }
 
     #[test]
     fn test_ingest_error_display() {
         let e1 = IngestError::UnknownDevice(42);
-        assert_eq!(format!("{}", e1), "Unknown device: 42");
+        assert_eq!(format!("{e1}"), "Unknown device: 42");
 
         let e2 = IngestError::DecryptionFailed("bad key".to_string());
-        assert_eq!(format!("{}", e2), "Decryption failed: bad key");
+        assert_eq!(format!("{e2}"), "Decryption failed: bad key");
 
         let e3 = IngestError::MalformedPacket("too short".to_string());
-        assert_eq!(format!("{}", e3), "Malformed packet: too short");
+        assert_eq!(format!("{e3}"), "Malformed packet: too short");
 
         let e4 = IngestError::StorageError("disk full".to_string());
-        assert_eq!(format!("{}", e4), "Storage error: disk full");
+        assert_eq!(format!("{e4}"), "Storage error: disk full");
     }
 
     #[test]
@@ -642,11 +643,12 @@ mod tests {
             queue_index: 2,
             latency_ms: 1.5,
         };
-        let debug_str = format!("{:?}", result);
+        let debug_str = format!("{result:?}");
         assert!(debug_str.contains("device_id"));
         assert!(debug_str.contains("42"));
     }
 
+    #[allow(clippy::large_stack_frames)]
     #[test]
     fn test_telemetry_snapshot_independent() {
         let pipeline = make_test_pipeline();
@@ -691,7 +693,7 @@ mod tests {
         let pkt = make_test_packet(1, 1, true);
         let src: SocketAddr = "127.0.0.1:5000".parse().unwrap();
         let result = pipeline.process_packet(&pkt, src).unwrap();
-        let debug = format!("{:?}", result);
+        let debug = format!("{result:?}");
         assert!(debug.contains("device_id"));
     }
 
