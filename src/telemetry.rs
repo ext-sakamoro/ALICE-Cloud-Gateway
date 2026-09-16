@@ -6,7 +6,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use alice_analytics::{CountMinSketch2048x7, DDSketch2048, FnvHasher, HyperLogLog16};
+use alice_analytics::sketch::{CountMinSketch2048x7, DDSketch2048, FnvHasher, HyperLogLog16};
 
 /// Gateway telemetry collector
 ///
