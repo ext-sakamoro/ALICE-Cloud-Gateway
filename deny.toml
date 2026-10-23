@@ -45,11 +45,11 @@ allow = [
 # this crate is published under the AGPL side
 [[licenses.exceptions]]
 name = "alice-cloud-gateway"
-allow = ["AGPL-3.0"]
+allow = ["AGPL-3.0-only"]
 
 [[licenses.exceptions]]
 name = "alice-cdn"
-allow = ["AGPL-3.0"]
+allow = ["AGPL-3.0-only"]
 
 [[licenses.exceptions]]
 name = "alice-cache"
