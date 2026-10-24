@@ -2,7 +2,7 @@
 
 Cloud gateway for the ALICE edge-to-cloud SDF streaming pipeline.
 
-Receives encrypted ASP (ALICE Streaming Protocol) packets from edge devices (e.g. Raspberry Pi 5 + Dolphin D5 Lite), decrypts them, and routes data through the ALICE ecosystem subsystems.
+Receives encrypted ASP (ALICE Streaming Protocol) packets from edge devices (ARM64 single-board computers with a depth camera), decrypts them, and routes data through the ALICE ecosystem subsystems.
 
 ## Architecture
 
