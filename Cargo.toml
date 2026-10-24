@@ -2,9 +2,9 @@
 name = "alice-cloud-gateway"
 version = "0.1.0"
 edition = "2021"
-authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+authors = ["Moroya Sakamoto"]
 description = "Cloud gateway for ALICE edge-to-cloud SDF streaming pipeline"
-license = "AGPL-3.0-only OR LicenseRef-Commercial"
+license = "LicenseRef-Proprietary"
 keywords = ["gateway", "sdf", "streaming", "edge-computing"]
 publish = false
 

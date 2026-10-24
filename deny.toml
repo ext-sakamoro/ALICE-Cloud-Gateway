@@ -41,11 +41,9 @@ allow = [
     "MPL-2.0",
 ]
 
-# alice-cloud-gateway and its ALICE siblings are offered as AGPL OR LicenseRef-Commercial;
-# this crate is published under the AGPL side
-[[licenses.exceptions]]
-name = "alice-cloud-gateway"
-allow = ["AGPL-3.0-only"]
+# workspace crates are not checked against the allow list
+[licenses.private]
+ignore = true
 
 [[licenses.exceptions]]
 name = "alice-cdn"
