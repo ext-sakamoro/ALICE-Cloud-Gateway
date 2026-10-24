@@ -11,8 +11,6 @@ on:
   # base with main there)
   push:
     branches: [main, "ci/**"]
-  pull_request:
-    branches: [main]
   schedule:
     # weekly on a fresh resolve; Saturday 03:17 UTC (each ALICE repo has its own slot)
     - cron: "17 3 * * 6"
