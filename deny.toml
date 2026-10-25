@@ -47,23 +47,23 @@ ignore = true
 
 [[licenses.exceptions]]
 name = "alice-cdn"
-allow = ["AGPL-3.0-only"]
+allow = ["LicenseRef-Proprietary"]
 
 [[licenses.exceptions]]
 name = "alice-cache"
-allow = ["AGPL-3.0-or-later"]
+allow = ["LicenseRef-Proprietary"]
 
 [[licenses.exceptions]]
 name = "alice-crypto"
-allow = ["AGPL-3.0-or-later"]
+allow = ["LicenseRef-Proprietary"]
 
 [[licenses.exceptions]]
 name = "alice-db"
-allow = ["AGPL-3.0-or-later"]
+allow = ["LicenseRef-Proprietary"]
 
 [[licenses.exceptions]]
 name = "alice-sync"
-allow = ["AGPL-3.0-or-later"]
+allow = ["LicenseRef-Proprietary"]
 
 [bans]
 multiple-versions = "warn"

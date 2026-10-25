@@ -10,6 +10,7 @@ All notable changes to ALICE-Cloud-Gateway will be documented in this file.
 
 ### Changed
 - Licence: `AGPL-3.0` → `LicenseRef-Proprietary`
+- 依存: sibling の ALICE-Cache / CDN / Crypto / DB / Sync を現在の main に (deny の例外は `LicenseRef-Proprietary`)、`[patch.crates-io]` で alice-det-math を ALICE-DetMath `6384856` (0.5.2) の 1 つにする
 - CI: `ci.yml` は `ci/**` の branch と手動実行でも走る main の run は打ち切らず、`ci/**` の古い run は新しい run が来たら打ち切る
 
 ### Fixed
