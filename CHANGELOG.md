@@ -9,6 +9,7 @@ All notable changes to ALICE-Cloud-Gateway will be documented in this file.
 - 解消に依存の更新が要る勧告は `scripts/advisory_holds.toml` の期限付きの保留 (2026-11-14 まで) とし、`scripts/advisory_hold_guard.py` が版と依存元の一致と期限を検査する: bincode 1.3.3 (unmaintained、alice-db と alice-sync 経由) それ以外の勧告は保留せず失敗する
 
 ### Changed
+- CI: `.github/actions/alice-siblings/action.yml` を共有の版 (ALICE-Analytics の main と同じ bytes) に揃える `.github/alice-siblings-private` に載せた非公開の隣を読み取り専用の鍵で clone できるようになった (この repository の隣はすべて公開なので、clone の仕方は変わらない)
 - Licence: `AGPL-3.0` → `LicenseRef-Proprietary`
 - 依存: sibling の ALICE-Cache / CDN / Crypto / DB / Sync を現在の main に (deny の例外は `LicenseRef-Proprietary`)、`[patch.crates-io]` で alice-det-math を ALICE-DetMath `6384856` (0.5.2) の 1 つにする
 - CI: `ci.yml` は `ci/**` の branch と手動実行でも走る main の run は打ち切らず、`ci/**` の古い run は新しい run が来たら打ち切る
