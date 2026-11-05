@@ -5,6 +5,7 @@ All notable changes to ALICE-Cloud-Gateway will be documented in this file.
 ## [Unreleased]
 
 ### Security
+- CI: 共有の `advisory_hold_guard` (試験も) と `.github/actions/alice-siblings` を新しい版にした `deny.toml` は `unused-ignored-advisory = "deny"`
 - CI: `security-audit.yml` を追加 `.github/alice-siblings` に固定した実物の sibling (Analytics / Cache / CDN / Crypto / DB / Streaming-Protocol / Sync / Zip) と毎回新しい解決で `cargo audit` と `cargo deny --all-features check all` を走らせ、解決と deny の graph がこの crate と path の sibling を全て含むこと (0 件は失敗) を検査する 週次は土曜 03:17 UTC
 - 解消に依存の更新が要る勧告は `scripts/advisory_holds.toml` の期限付きの保留 (2026-11-14 まで) とし、`scripts/advisory_hold_guard.py` が版と依存元の一致と期限を検査する: bincode 1.3.3 (unmaintained、alice-db と alice-sync 経由) それ以外の勧告は保留せず失敗する
 
