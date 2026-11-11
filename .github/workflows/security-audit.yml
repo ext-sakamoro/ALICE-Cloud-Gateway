@@ -1,7 +1,7 @@
 name: Security audit
 
 # RustSec advisories (cargo audit) and licence / advisory / ban / source policy (cargo deny),
-# on a fresh resolve against the real siblings pinned in .github/alice-siblings (never stubs),
+# on the committed Cargo.lock (every ALICE-* dependency from git main, pinned by the lock),
 # so an advisory against any crate in the graph, one that comes in through a sibling included,
 # turns this red without a change here.
 
@@ -49,7 +49,7 @@ jobs:
           files="$(git diff --name-only "${base}" HEAD)"
           echo "base ${base}"; printf '%s\n' "${files}"
           deps=false
-          if printf '%s\n' "${files}" | grep -Eq '^(Cargo\.toml|Cargo\.lock|deny\.toml|\.github/workflows/security-audit\.yml|\.github/alice-siblings|\.github/actions/alice-siblings/|scripts/(test_)?(sibling_coverage_guard|advisory_hold_guard)\.py|scripts/advisory_holds\.toml|\.cargo/audit\.toml)'; then deps=true; fi
+          if printf '%s\n' "${files}" | grep -Eq '^(Cargo\.toml|Cargo\.lock|deny\.toml|\.github/workflows/security-audit\.yml|scripts/(test_)?(sibling_coverage_guard|advisory_hold_guard)\.py|scripts/advisory_holds\.toml|\.cargo/audit\.toml)'; then deps=true; fi
           echo "deps=${deps}" >> "${GITHUB_OUTPUT}"
 
   audit:
@@ -60,17 +60,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check out the pinned ALICE-* siblings
-        uses: ./.github/actions/alice-siblings
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
-      # fresh resolve (no Cargo.lock is committed); the guard (its tests first) checks that the
-      # resolve holds this crate and every path sibling, else the scan would compare nothing
-      - name: Resolve
+      # the committed lock; the guard (its tests first) checks that it holds this crate and
+      # every sibling, else the scan would compare nothing
+      - name: Lock covers the siblings
         run: |
           set -euo pipefail
-          rm -f Cargo.lock
-          cargo generate-lockfile
           python3 scripts/test_sibling_coverage_guard.py
           python3 scripts/sibling_coverage_guard.py --manifest Cargo.toml --lock Cargo.lock
       - name: Run cargo audit
@@ -89,20 +85,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check out the pinned ALICE-* siblings
-        uses: ./.github/actions/alice-siblings
       - name: Install cargo-deny
         run: cargo install --locked cargo-deny
-      # fresh resolve; the dated holds stay exact (the hold guard), and cargo deny's crate graph
-      # must hold this crate and every path sibling and be no larger than the resolve
+      # the committed lock; the dated holds stay exact (the hold guard), and cargo deny's crate
+      # graph must hold this crate and every sibling and be no larger than the lock
       - name: Run cargo deny check all
         run: |
           set -euo pipefail
-          rm -f Cargo.lock
-          cargo generate-lockfile
           python3 scripts/test_advisory_hold_guard.py
           python3 scripts/advisory_hold_guard.py
           python3 scripts/test_sibling_coverage_guard.py
-          cargo deny --all-features list --format json --layout crate > deny-graph.json
+          cargo deny --locked --all-features list --format json --layout crate > deny-graph.json
           python3 scripts/sibling_coverage_guard.py --manifest Cargo.toml --lock Cargo.lock --graph deny-graph.json
-          cargo deny --all-features check all
+          cargo deny --locked --all-features check all

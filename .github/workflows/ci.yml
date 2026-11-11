@@ -15,108 +15,67 @@ env:
 
 jobs:
   test:
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+    env:
+      # the passed-test count at the commit that set it; fewer passed tests
+      # (a removed or skipped test, or none at all) is a failure
+      MIN_PASSED: "148"
     steps:
       - uses: actions/checkout@v5
         with:
           path: ALICE-Cloud-Gateway
-
-      - name: Create dependency stubs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Lock (every alice-* from git, none by path or from a registry, at most one alice-det-math)
+        working-directory: ALICE-Cloud-Gateway
         shell: bash
         run: |
-          for crate_info in \
-            "ALICE-DB:alice-db" \
-            "ALICE-Cache:alice-cache" \
-            "ALICE-Sync:alice-sync" \
-            "ALICE-CDN:alice-cdn" \
-            "ALICE-Crypto:alice-crypto" \
-            "ALICE-Analytics:alice-analytics" \
-            "ALICE-Streaming-Protocol:libasp"; do
-            dir=$(echo "$crate_info" | cut -d: -f1)
-            pkg=$(echo "$crate_info" | cut -d: -f2)
-            mkdir -p "$dir/src"
-            cat > "$dir/Cargo.toml" << TOML
-          [package]
-          name = "$pkg"
-          version = "0.1.0"
-          edition = "2021"
-          [features]
-          default = []
-          std = []
-          sdf = []
-          cloud = []
-          [lib]
-          path = "src/lib.rs"
-          TOML
-            echo "" > "$dir/src/lib.rs"
-          done
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ALICE-Cloud-Gateway
-
-      - name: Build
+          python3 - <<'PY'
+          import sys, tomllib
+          pk = [p for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"].startswith("alice")]
+          bad = [f'{p["name"]} {p["version"]} {p.get("source", "path")}' for p in pk
+                 if p["name"] != "alice-cloud-gateway" and not p.get("source", "").startswith("git+")]
+          dm = [p for p in pk if p["name"] == "alice-det-math"]
+          print(f"lock: {len(pk) - 1} alice-* dependencies, {len(bad)} not from git, {len(dm)} alice-det-math")
+          if len(pk) < 2 or bad or len(dm) > 1:
+              sys.exit("\n".join(bad) or "expected an alice-* dependency and at most one alice-det-math")
+          PY
+      - name: Test (lib, integration, doctests)
         working-directory: ALICE-Cloud-Gateway
-        run: cargo build
-        continue-on-error: true
-
-      - name: Test
-        working-directory: ALICE-Cloud-Gateway
-        run: cargo test
-        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          log="$(mktemp)"
+          cargo test --locked 2>&1 | tee "${log}"
+          passed=$(grep -E '^test result: ' "${log}" | awk '{s += $4} END {print s + 0}')
+          failed=$(grep -E '^test result: ' "${log}" | awk '{s += $6} END {print s + 0}')
+          echo "passed: ${passed} (minimum ${MIN_PASSED}), failed: ${failed}"
+          if [ "${failed}" -ne 0 ] || grep -E '^test result: ' "${log}" | grep -vE '^test result: ok\. ' >/dev/null; then
+            echo "::error::${failed} tests failed"
+            exit 1
+          fi
+          if [ "${passed}" -lt "${MIN_PASSED}" ]; then
+            echo "::error::${passed} tests passed, fewer than ${MIN_PASSED}"
+            exit 1
+          fi
 
   clippy:
+    name: Clippy (all targets, -D warnings)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           path: ALICE-Cloud-Gateway
-
-      - name: Create dependency stubs
-        shell: bash
-        run: |
-          for crate_info in \
-            "ALICE-DB:alice-db" \
-            "ALICE-Cache:alice-cache" \
-            "ALICE-Sync:alice-sync" \
-            "ALICE-CDN:alice-cdn" \
-            "ALICE-Crypto:alice-crypto" \
-            "ALICE-Analytics:alice-analytics" \
-            "ALICE-Streaming-Protocol:libasp"; do
-            dir=$(echo "$crate_info" | cut -d: -f1)
-            pkg=$(echo "$crate_info" | cut -d: -f2)
-            mkdir -p "$dir/src"
-            cat > "$dir/Cargo.toml" << TOML
-          [package]
-          name = "$pkg"
-          version = "0.1.0"
-          edition = "2021"
-          [features]
-          default = []
-          std = []
-          sdf = []
-          cloud = []
-          [lib]
-          path = "src/lib.rs"
-          TOML
-            echo "" > "$dir/src/lib.rs"
-          done
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ALICE-Cloud-Gateway
-
       - name: Clippy
         working-directory: ALICE-Cloud-Gateway
-        run: cargo clippy -- -D warnings
-        continue-on-error: true
+        run: cargo clippy --locked --all-targets -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest

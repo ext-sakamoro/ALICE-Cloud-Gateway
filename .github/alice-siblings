@@ -1,9 +1,0 @@
-# the commit of each sibling the advisory scan resolves against (full SHA, checked out next to this repository); change only this value to move it
-ALICE-Analytics 79b5b4a590386f3db87f25496f6fb1311c5c97cb
-ALICE-Cache ddc60b15e0ef3c9bf2803f9d860f2411665bc7be
-ALICE-CDN eb4a216c113423952d99fbda1a944fa976a262ac
-ALICE-Crypto 4ab0f0e6c1cba949c949add9d5aedc98e080a4be
-ALICE-DB 401c1c1ea74a20728c6408e51989fcfa19f0aeba
-ALICE-Streaming-Protocol b399969819f7c7be9aa1f277eeccefa2407396f9
-ALICE-Sync 4e5bbfa88334acdd3024938e13c348c35e0bde7b
-ALICE-Zip bf4cefa516680a42a5fe8a7dca522d6044ec20b1

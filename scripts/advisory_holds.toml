@@ -20,14 +20,4 @@
 #        pre-release of the same release. Empty when no version is safe: then every
 #        version in Cargo.lock must be held.
 
-# Each hold ends on 2026-11-14; a renewal needs a new date and the reason it is still open.
-
-[[hold]]
-id = "RUSTSEC-2025-0141"
-kind = "unmaintained"
-crate = "bincode"
-version = "1.3.3"
-dependents = ["alice-db 0.6.0", "alice-sync 0.7.0"]
-fixed = []
-expires = "2026-11-14"
-until = "alice-db and alice-sync replace bincode"
+# No hold is open (bincode left the graph with alice-sync 0.8 and alice-db 0.6). A new hold needs a date and the reason it is open.
