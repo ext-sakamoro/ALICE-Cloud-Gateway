@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 # ALICE Ecosystem
-alice-db = { version = "0.6.0", git = "https://github.com/ext-sakamoro/ALICE-DB", branch = "main", features = ["sdf"] }
+alice-db = { version = "0.7", git = "https://github.com/ext-sakamoro/ALICE-DB", branch = "main", features = ["sdf"] }
 alice-cache = { version = "0.2.0", git = "https://github.com/ext-sakamoro/ALICE-Cache", branch = "main" }
 alice-sync = { version = "0.8.0", git = "https://github.com/ext-sakamoro/ALICE-Sync", branch = "main", features = ["cloud"] }
 alice-cdn = { version = "0.2.0", git = "https://github.com/ext-sakamoro/ALICE-CDN", branch = "main", features = ["sdf"] }

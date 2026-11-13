@@ -11,6 +11,7 @@ All notable changes to ALICE-Cloud-Gateway will be documented in this file.
 - 解消に依存の更新が要る勧告は `scripts/advisory_holds.toml` の期限付きの保留 (2026-11-14 まで) とし、`scripts/advisory_hold_guard.py` が版と依存元の一致と期限を検査する: bincode 1.3.3 (unmaintained、alice-db と alice-sync 経由) それ以外の勧告は保留せず失敗する
 
 ### Changed
+- 依存: alice-db を 0.7 に (展開は上限付き、blob の圧縮値に長さを記録、config は non_exhaustive) この crate は config を struct literal で作らないので code の変更なし lock: alice-db f045d85、alice-zip 6c5fc8b、alice-det-math 6269efc、alice-serial 38f306c
 - Cargo.lock: alice-db を main に取り直し、alice-db が前に rev で引いていた alice-serial も ALICE-Serial の main branch から (同じ commit 16b34eb) になった
 - 依存: alice-db / alice-cache / alice-sync / alice-cdn / alice-crypto / alice-analytics / libasp を path から ALICE の各 repo の main (git、branch、版を指定) に変え、`[patch.crates-io]` の alice-det-math を除いた (どの依存も同じ det-math 0.6.1 を引く) `Cargo.lock` を追跡する CI の試験と clippy は中身の無い stub の crate に対する build (失敗を無視する設定つき) をやめ、実物の依存で `--locked` で走らせる (試験は ubuntu と macOS、通った試験が 148 件未満なら失敗、lock の alice-* がすべて git から来て alice-det-math が 1 つ以下であることも確かめる) `scripts/preflight.sh` は生成し直した
 - CI: `.github/actions/alice-siblings/action.yml` を共有の版 (ALICE-Analytics の main と同じ bytes) に揃える `.github/alice-siblings-private` に載せた非公開の隣を読み取り専用の鍵で clone できるようになった (この repository の隣はすべて公開なので、clone の仕方は変わらない)
