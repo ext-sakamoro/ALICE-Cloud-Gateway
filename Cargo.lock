@@ -75,7 +75,10 @@ dependencies = [
 [[package]]
 name = "alice-cdn"
 version = "0.2.0"
-source = "git+https://github.com/ext-sakamoro/ALICE-CDN?branch=main#ad85fa1ea8bc92fb81d4f417518cacdd1c93210c"
+source = "git+https://github.com/ext-sakamoro/ALICE-CDN?branch=main#af01fe46adcc780228d052f0978732de7ac29624"
+dependencies = [
+ "alice-det-math",
+]
 
 [[package]]
 name = "alice-cloud-gateway"
@@ -138,7 +141,7 @@ dependencies = [
 [[package]]
 name = "alice-det-math"
 version = "0.6.1"
-source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?branch=main#6269efc2280a74301c91139117d5d01a5eca60df"
+source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?branch=main#e247189b3f8e37668955ac217e046f6f7e18ae37"
 
 [[package]]
 name = "alice-identity"
