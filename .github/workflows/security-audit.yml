@@ -61,7 +61,10 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        uses: taiki-e/install-action@893d6ee8d714b6c7dfe2bcd94e5759e9a7958a7e # v2.90.10
+        with:
+          tool: cargo-audit@0.23.0
+          fallback: none
       # the committed lock; the guard (its tests first) checks that it holds this crate and
       # every sibling, else the scan would compare nothing
       - name: Lock covers the siblings
@@ -86,7 +89,10 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-deny
-        run: cargo install --locked cargo-deny
+        uses: taiki-e/install-action@893d6ee8d714b6c7dfe2bcd94e5759e9a7958a7e # v2.90.10
+        with:
+          tool: cargo-deny@0.22.1
+          fallback: none
       # the committed lock; the dated holds stay exact (the hold guard), and cargo deny's crate
       # graph must hold this crate and every sibling and be no larger than the lock
       - name: Run cargo deny check all
